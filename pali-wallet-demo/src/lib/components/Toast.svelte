@@ -1,19 +1,6 @@
 <script>
-  /**
-   * Toast - Componente de notificación temporal
-   * 
-   * Props:
-   * - message: string - Mensaje a mostrar
-   * - type: 'success' | 'error' | 'info' | 'warning' (default: 'info')
-   * - duration: number - Duración en ms (default: 3000)
-   * - visible: boolean - Si el toast está visible
-   * 
-   * Events:
-   * - close: Se dispara cuando el toast se cierra
-   */
-  
-  import { createEventDispatcher, onMount } from 'svelte';
-  
+  import { createEventDispatcher } from 'svelte';
+
   let { 
     message = '',
     type = 'info',
@@ -22,6 +9,13 @@
   } = $props();
 
   const dispatch = createEventDispatcher();
+
+  // ✅ Estado reactivo
+  let currentStyle = $state({
+    bg: 'bg-blue-500',
+    icon: 'ℹ️',
+    textColor: 'text-white'
+  });
 
   let timeoutId = null;
 
@@ -49,58 +43,30 @@
     }
   };
 
-  let currentStyle = typeStyles.info;
-
-  // Función para actualizar el estilo
-  function updateStyle() {
+  // ✅ Reactividad automática cuando cambia type
+  $effect(() => {
     currentStyle = typeStyles[type] || typeStyles.info;
-  }
-  
-  // Actualizar estilo al montar
-  onMount(() => {
-    updateStyle();
   });
-  
-  // Verificar cambios de tipo
-  let previousType = type;
-  function checkTypeChange() {
-    if (type !== previousType) {
-      previousType = type;
-      updateStyle();
-    }
-  }
-  
-  setInterval(checkTypeChange, 100);
 
-  // Auto-cerrar después de la duración especificada
-  let previousVisible = visible;
-  let previousDuration = duration;
-  
-  function checkAutoClose() {
-    if (visible && duration > 0 && (visible !== previousVisible || duration !== previousDuration)) {
-      previousVisible = visible;
-      previousDuration = duration;
-      
-      if (timeoutId) clearTimeout(timeoutId);
+  // ✅ Auto-close reactivo (sin setInterval)
+  $effect(() => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+
+    if (visible && duration > 0) {
+      const currentDuration = duration;
+
       timeoutId = setTimeout(() => {
         handleClose();
-      }, duration);
+      }, currentDuration);
     }
-  }
-  
-  setInterval(checkAutoClose, 100);
+  });
 
   function handleClose() {
     visible = false;
     dispatch('close');
   }
-
-  // Limpiar timeout al destruir
-  onMount(() => {
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-    };
-  });
 </script>
 
 {#if visible && message}
@@ -131,7 +97,3 @@
     </div>
   </div>
 {/if}
-
-<style>
-  /* Animaciones adicionales si es necesario */
-</style>

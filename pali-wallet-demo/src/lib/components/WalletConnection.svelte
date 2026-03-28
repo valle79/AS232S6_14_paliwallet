@@ -75,15 +75,25 @@
     };
   });
 
-  async function handleConnect() {
-    if (isLoading) return;
-    
-    try {
-      dispatch('connect');
-    } catch (error) {
-      console.error('Error in connect handler:', error);
-    }
+async function handleConnect() {
+  if (isLoading) return;
+
+  try {
+    isLoading = true;
+
+    const address = await walletService.connectWallet();
+
+    console.log("Wallet conectada:", address);
+
+    dispatch('connect', { address });
+
+  } catch (error) {
+    console.error(error);
+    dispatch('error', error.message); // importante
+  } finally {
+    isLoading = false;
   }
+}
 
   async function handleDisconnect() {
     if (isLoading) return;

@@ -70,7 +70,12 @@ export class WalletService {
     if (!this.ethereum) throw new Error('WALLET_NOT_INSTALLED');
 
     this.provider = new ethers.BrowserProvider(this.ethereum);
-    await this.provider.getNetwork();
+
+    try {
+      await this.provider.getNetwork();
+    } catch {
+      throw new Error('PROVIDER_INITIALIZATION_ERROR');
+    }
   }
 
   async getNetworkInfo(): Promise<NetworkInfo> {
@@ -86,25 +91,29 @@ export class WalletService {
 
   /* ===== Eventos ===== */
 
+  private handleAccountsChanged = (accounts: string[]) => {
+    if (!accounts.length) return this.handleDisconnection();
+
+    this.currentAddress = accounts[0];
+    this.onAccountChangedCallback?.(accounts[0]);
+  };
+
+  private handleChainChanged = (chainId: string) => {
+    this.onChainChangedCallback?.(chainId);
+  };
+
+  private handleDisconnectEvent = () => {
+    this.handleDisconnection();
+  };
+
   private setupEventListeners(): void {
     if (!this.ethereum) return;
 
     this.cleanup();
 
-    this.ethereum.on('accountsChanged', (accounts: string[]) => {
-      if (!accounts.length) return this.handleDisconnection();
-
-      this.currentAddress = accounts[0];
-      this.onAccountChangedCallback?.(accounts[0]);
-    });
-
-    this.ethereum.on('chainChanged', (chainId: string) => {
-      this.onChainChangedCallback?.(chainId);
-    });
-
-    this.ethereum.on('disconnect', () => {
-      this.handleDisconnection();
-    });
+    this.ethereum.on('accountsChanged', this.handleAccountsChanged);
+    this.ethereum.on('chainChanged', this.handleChainChanged);
+    this.ethereum.on('disconnect', this.handleDisconnectEvent);
   }
 
   private handleDisconnection(): void {
@@ -112,15 +121,16 @@ export class WalletService {
     this.currentAddress = null;
     this.signer = null;
     this.currentNetwork = null;
+
     this.onDisconnectCallback?.();
   }
 
   cleanup(): void {
     if (!this.ethereum?.removeListener) return;
 
-    this.ethereum.removeListener('accountsChanged', () => {});
-    this.ethereum.removeListener('chainChanged', () => {});
-    this.ethereum.removeListener('disconnect', () => {});
+    this.ethereum.removeListener('accountsChanged', this.handleAccountsChanged);
+    this.ethereum.removeListener('chainChanged', this.handleChainChanged);
+    this.ethereum.removeListener('disconnect', this.handleDisconnectEvent);
   }
 
   /* ===== Conexión ===== */
@@ -147,8 +157,11 @@ export class WalletService {
       return accounts[0];
 
     } catch (error: any) {
+      console.error('Connect error:', error);
+
       if (error.code === 4001) throw new Error('CONNECTION_REJECTED');
       if (error.code === -32002) throw new Error('CONNECTION_PENDING');
+
       throw new Error('CONNECTION_ERROR');
     }
   }
@@ -161,21 +174,26 @@ export class WalletService {
   async autoConnect(): Promise<boolean> {
     if (!this.ethereum) return false;
 
-    const accounts: string[] = await this.ethereum.request({
-      method: 'eth_accounts'
-    });
+    try {
+      const accounts: string[] = await this.ethereum.request({
+        method: 'eth_accounts'
+      });
 
-    if (!accounts.length) return false;
+      if (!accounts.length) return false;
 
-    await this.initializeProvider();
+      await this.initializeProvider();
 
-    this.signer = await this.provider!.getSigner();
-    this.currentAddress = accounts[0];
-    this.isConnected = true;
-    this.currentNetwork = await this.getNetworkInfo();
+      this.signer = await this.provider!.getSigner();
+      this.currentAddress = accounts[0];
+      this.isConnected = true;
+      this.currentNetwork = await this.getNetworkInfo();
 
-    this.setupEventListeners();
-    return true;
+      this.setupEventListeners();
+
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /* ===== Datos ===== */
@@ -195,8 +213,12 @@ export class WalletService {
     if (!this.provider || !this.currentAddress)
       throw new Error('WALLET_NOT_CONNECTED');
 
-    const balanceWei = await this.provider.getBalance(this.currentAddress);
-    return ethers.formatEther(balanceWei);
+    try {
+      const balanceWei = await this.provider.getBalance(this.currentAddress);
+      return ethers.formatEther(balanceWei);
+    } catch {
+      throw new Error('BALANCE_FETCH_ERROR');
+    }
   }
 
   async getBalanceWithNetwork(): Promise<BalanceInfo> {
@@ -214,21 +236,35 @@ export class WalletService {
   /* ===== Utils ===== */
 
   getCurrencySymbol(chainId: string): string {
-    const map: Record<string,string> = {
-      '1':'ETH','5':'ETH','11155111':'ETH',
-      '137':'MATIC','80001':'MATIC',
-      '57':'SYS','5700':'SYS','570':'SYS',
-      '57042':'TSYS','57000':'TSYS',
-      '8453':'ETH','84531':'ETH'
+    const map: Record<string, string> = {
+      '1': 'ETH',
+      '5': 'ETH',
+      '11155111': 'ETH',
+      '137': 'MATIC',
+      '80001': 'MATIC',
+      '57': 'SYS',
+      '5700': 'SYS',
+      '570': 'SYS',
+      '57042': 'TSYS',
+      '57000': 'TSYS',
+      '8453': 'ETH',
+      '84531': 'ETH'
     };
 
     return map[chainId] ?? 'ETH';
   }
 
-  onAccountChanged(cb:(address:string)=>void){ this.onAccountChangedCallback = cb; }
-  onChainChanged(cb:(chainId:string)=>void){ this.onChainChangedCallback = cb; }
-  onDisconnect(cb:()=>void){ this.onDisconnectCallback = cb; }
+  onAccountChanged(cb: (address: string) => void) {
+    this.onAccountChangedCallback = cb;
+  }
 
+  onChainChanged(cb: (chainId: string) => void) {
+    this.onChainChangedCallback = cb;
+  }
+
+  onDisconnect(cb: () => void) {
+    this.onDisconnectCallback = cb;
+  }
 }
 
 /* ===== Singleton ===== */

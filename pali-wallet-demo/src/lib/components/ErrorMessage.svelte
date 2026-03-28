@@ -11,7 +11,7 @@
    * - dismiss: Se dispara cuando el usuario cierra el mensaje
    */
   
-  import { createEventDispatcher, onMount } from 'svelte';
+  import { createEventDispatcher } from 'svelte';
   
   let { 
     message = '',
@@ -40,35 +40,12 @@
     }
   };
 
-  let currentStyle = typeStyles.error;
-  
-  // Función para actualizar el estilo
-  function updateCurrentStyle() {
-    currentStyle = typeStyles[type] || typeStyles.error;
-  }
-  
-  // Actualizar al montar
-  onMount(() => {
-    updateCurrentStyle();
-  });
-  
-  // Verificar cambios de tipo
-  let previousType = type;
-  function checkTypeChange() {
-    if (type !== previousType) {
-      previousType = type;
-      updateCurrentStyle();
-    }
-  }
-  
-  setInterval(checkTypeChange, 100);
-
-  function handleDismiss() {
-    dispatch('dismiss');
-  }
+  // ✅ estado reactivo
+  let currentStyle = $state(typeStyles.error);
+  let friendlyMessage = $state("");
 
   // Mapear códigos de error a mensajes amigables
-  function getFriendlyMessage(message) {
+  function getFriendlyMessage(msg) {
     const errorMessages = {
       'WALLET_NOT_INSTALLED': 'Pali Wallet no está instalada. Por favor, instálala desde la Chrome Web Store.',
       'CONNECTION_REJECTED': 'Conexión rechazada. Por favor, acepta la conexión en Pali Wallet.',
@@ -81,31 +58,22 @@
       'PROVIDER_INITIALIZATION_ERROR': 'Error al inicializar la conexión con la wallet.'
     };
 
-    return errorMessages[message] || message;
+    return errorMessages[msg] || msg;
   }
 
-  let friendlyMessage = '';
-  
-  // Función para actualizar el mensaje
-  function updateFriendlyMessage() {
-    friendlyMessage = getFriendlyMessage(message);
-  }
-  
-  // Actualizar al montar
-  onMount(() => {
-    updateFriendlyMessage();
+  // ✅ reactividad automática para el estilo
+  $effect(() => {
+    currentStyle = typeStyles[type] || typeStyles.error;
   });
-  
-  // Verificar cambios de mensaje
-  let previousMessage = message;
-  function checkMessageChange() {
-    if (message !== previousMessage) {
-      previousMessage = message;
-      updateFriendlyMessage();
-    }
+
+  // ✅ reactividad automática para el mensaje
+  $effect(() => {
+    friendlyMessage = getFriendlyMessage(message);
+  });
+
+  function handleDismiss() {
+    dispatch('dismiss');
   }
-  
-  setInterval(checkMessageChange, 100);
 </script>
 
 {#if message}
@@ -128,7 +96,7 @@
       </p>
     </div>
 
-    <!-- Botón de cerrar (si es dismissible) -->
+    <!-- Botón de cerrar -->
     {#if dismissible}
       <div class="flex-shrink-0">
         <button
