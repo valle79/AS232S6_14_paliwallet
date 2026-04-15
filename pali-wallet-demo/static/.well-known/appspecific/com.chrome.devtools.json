@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "projects": [
+    {
+      "title": "Pali Wallet",
+      "icon": "https://pali.finance/favicon.png",
+      "inspectable_web_urls": ["http://localhost:5173/", "http://localhost:5174/"]
+    }
+  ]
+}

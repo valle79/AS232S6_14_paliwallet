@@ -1,82 +1,58 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
+  import { removeNotification } from '../utils/notifications';
 
   let { 
+    id = 0,
     message = '',
     type = 'info',
-    duration = 3000,
-    visible = false
+    duration = 3000
   } = $props();
 
-  const dispatch = createEventDispatcher();
+  let visible = $state(true);
 
-  // ✅ Estado reactivo
-  let currentStyle = $state({
-    bg: 'bg-blue-500',
-    icon: 'ℹ️',
-    textColor: 'text-white'
-  });
-
-  let timeoutId = null;
-
-  // Estilos por tipo
   const typeStyles = {
     success: {
-      bg: 'bg-green-500',
-      icon: '✅',
-      textColor: 'text-white'
+      bg: 'bg-emerald-600/90 border-emerald-500/30',
+      icon: '✅'
     },
     error: {
-      bg: 'bg-red-500',
-      icon: '❌',
-      textColor: 'text-white'
+      bg: 'bg-red-600/90 border-red-500/30',
+      icon: '❌'
     },
     warning: {
-      bg: 'bg-yellow-500',
-      icon: '⚠️',
-      textColor: 'text-white'
+      bg: 'bg-amber-600/90 border-amber-500/30',
+      icon: '⚠️'
     },
     info: {
-      bg: 'bg-blue-500',
-      icon: 'ℹ️',
-      textColor: 'text-white'
+      bg: 'bg-blue-600/90 border-blue-500/30',
+      icon: 'ℹ️'
     }
   };
 
-  // ✅ Reactividad automática cuando cambia type
+  const currentStyle = $derived(typeStyles[type] || typeStyles.info);
+
   $effect(() => {
-    currentStyle = typeStyles[type] || typeStyles.info;
-  });
-
-  // ✅ Auto-close reactivo (sin setInterval)
-  $effect(() => {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-
-    if (visible && duration > 0) {
-      const currentDuration = duration;
-
-      timeoutId = setTimeout(() => {
+    if (duration > 0) {
+      const timeoutId = setTimeout(() => {
         handleClose();
-      }, currentDuration);
+      }, duration);
+
+      return () => clearTimeout(timeoutId);
     }
   });
 
   function handleClose() {
     visible = false;
-    dispatch('close');
+    removeNotification(id);
   }
 </script>
 
 {#if visible && message}
   <div 
-    class="fixed top-4 right-4 z-50 transform transition-all duration-300 ease-in-out"
-    class:translate-x-0={visible}
-    class:translate-x-full={!visible}
+    class="fixed top-4 right-4 z-[100] transform transition-all duration-300 ease-out fade-in"
   >
-    <div class="flex items-center {currentStyle.bg} {currentStyle.textColor} px-4 py-3 rounded-lg shadow-lg max-w-sm">
-      <span class="mr-3 text-lg" aria-hidden="true">
+    <div class="flex items-center {currentStyle.bg} backdrop-blur-xl text-white px-4 py-3 rounded-xl shadow-2xl max-w-sm border">
+      <span class="mr-3 text-base" aria-hidden="true">
         {currentStyle.icon}
       </span>
       
@@ -87,10 +63,10 @@
       <button
         type="button"
         onclick={handleClose}
-        class="ml-3 text-white hover:text-gray-200 focus:outline-none focus:ring-2 focus:ring-white focus:ring-opacity-50 rounded"
+        class="ml-3 text-white/70 hover:text-white transition-colors rounded-lg p-1"
         aria-label="Cerrar notificación"
       >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
         </svg>
       </button>

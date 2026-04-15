@@ -1,51 +1,35 @@
 <script>
   /**
    * ErrorMessage - Componente para mostrar mensajes de error, advertencia e información
-   * 
-   * Props:
-   * - message: string - Mensaje a mostrar
-   * - type: 'error' | 'warning' | 'info' (default: 'error')
-   * - dismissible: boolean - Si se puede cerrar el mensaje (default: false)
-   * 
-   * Events:
-   * - dismiss: Se dispara cuando el usuario cierra el mensaje
    */
-  
-  import { createEventDispatcher } from 'svelte';
   
   let { 
     message = '',
     type = 'error',
-    dismissible = false
+    dismissible = false,
+    ondismiss = () => {}
   } = $props();
 
-  const dispatch = createEventDispatcher();
-
-  // Mapeo de tipos a estilos
+  // Mapeo de tipos a estilos (dark theme)
   const typeStyles = {
     error: {
-      container: 'bg-red-50 border-red-200 text-red-800',
-      icon: '❌',
-      iconColor: 'text-red-500'
+      container: 'bg-red-500/10 border-red-500/20 text-red-300',
+      icon: '❌'
     },
     warning: {
-      container: 'bg-yellow-50 border-yellow-200 text-yellow-800',
-      icon: '⚠️',
-      iconColor: 'text-yellow-500'
+      container: 'bg-amber-500/10 border-amber-500/20 text-amber-300',
+      icon: '⚠️'
     },
     info: {
-      container: 'bg-blue-50 border-blue-200 text-blue-800',
-      icon: 'ℹ️',
-      iconColor: 'text-blue-500'
+      container: 'bg-blue-500/10 border-blue-500/20 text-blue-300',
+      icon: 'ℹ️'
     }
   };
 
-  // ✅ estado reactivo
-  let currentStyle = $state(typeStyles.error);
-  let friendlyMessage = $state("");
+  const currentStyle = $derived(typeStyles[type] || typeStyles.error);
 
   // Mapear códigos de error a mensajes amigables
-  function getFriendlyMessage(msg) {
+  const friendlyMessage = $derived.by(() => {
     const errorMessages = {
       'WALLET_NOT_INSTALLED': 'Pali Wallet no está instalada. Por favor, instálala desde la Chrome Web Store.',
       'CONNECTION_REJECTED': 'Conexión rechazada. Por favor, acepta la conexión en Pali Wallet.',
@@ -58,60 +42,39 @@
       'PROVIDER_INITIALIZATION_ERROR': 'Error al inicializar la conexión con la wallet.'
     };
 
-    return errorMessages[msg] || msg;
-  }
-
-  // ✅ reactividad automática para el estilo
-  $effect(() => {
-    currentStyle = typeStyles[type] || typeStyles.error;
+    return errorMessages[message] || message;
   });
-
-  // ✅ reactividad automática para el mensaje
-  $effect(() => {
-    friendlyMessage = getFriendlyMessage(message);
-  });
-
-  function handleDismiss() {
-    dispatch('dismiss');
-  }
 </script>
 
 {#if message}
   <div 
-    class="border rounded-lg p-4 flex items-start space-x-3 {currentStyle.container}"
+    class="border rounded-xl p-4 flex items-start gap-3 {currentStyle.container}"
     role="alert"
     aria-live="polite"
   >
-    <!-- Icono -->
     <div class="flex-shrink-0">
       <span class="text-lg" aria-hidden="true">
         {currentStyle.icon}
       </span>
     </div>
 
-    <!-- Contenido del mensaje -->
     <div class="flex-1 min-w-0">
       <p class="text-sm font-medium">
         {friendlyMessage}
       </p>
     </div>
 
-    <!-- Botón de cerrar -->
     {#if dismissible}
       <div class="flex-shrink-0">
         <button
           type="button"
-          class="inline-flex rounded-md p-1.5 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-colors"
-          onclick={handleDismiss}
+          class="inline-flex rounded-lg p-1.5 hover:bg-slate-700/50 transition-colors text-slate-400 hover:text-white"
+          onclick={ondismiss}
           aria-label="Cerrar mensaje"
         >
-          <span class="text-lg" aria-hidden="true">✕</span>
+          <span class="text-sm" aria-hidden="true">✕</span>
         </button>
       </div>
     {/if}
   </div>
 {/if}
-
-<style>
-  /* Estilos adicionales si es necesario */
-</style>

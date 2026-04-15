@@ -30,6 +30,12 @@ export function mapWalletError(error) {
       type: 'info',
       action: 'wait'
     },
+
+    'CONNECTION_TIMEOUT': {
+      message: 'La conexión tardó demasiado. Asegúrate de que Pali Wallet esté activo y responda dentro de 15 segundos.',
+      type: 'error',
+      action: 'retry'
+    },
     
     'CONNECTION_ERROR': {
       message: 'Error al conectar con la wallet. Verifica que Pali Wallet esté funcionando correctamente.',

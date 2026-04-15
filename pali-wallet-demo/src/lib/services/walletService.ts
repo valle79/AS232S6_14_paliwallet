@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 import { formatAddress } from '../utils/formatters.js';
+import { getNetworkByChainId } from '../config/networkConfig';
 
 /* ===== Tipos ===== */
 
@@ -81,12 +82,73 @@ export class WalletService {
   async getNetworkInfo(): Promise<NetworkInfo> {
     if (!this.provider) throw new Error('PROVIDER_NOT_INITIALIZED');
 
-    const network = await this.provider.getNetwork();
+    // Create a Promise with a 10-second timeout
+    const networkPromise = new Promise<NetworkInfo>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error('NETWORK_INFO_TIMEOUT'));
+      }, 10000);
 
-    return {
-      chainId: network.chainId.toString(),
-      name: network.name
+      this.provider!.getNetwork()
+        .then((network) => {
+          clearTimeout(timeoutId);
+          const chainIdStr = network.chainId.toString();
+
+          // Resolve name: 1) Our networkConfig, 2) Pali Wallet fallback map, 3) ethers.js name
+          const resolvedName = this.resolveChainName(chainIdStr, network.name);
+
+          resolve({
+            chainId: chainIdStr,
+            name: resolvedName
+          });
+        })
+        .catch((error) => {
+          clearTimeout(timeoutId);
+          reject(error);
+        });
+    });
+
+    return networkPromise;
+  }
+
+  /**
+   * Resolve a human-readable chain name from chainId.
+   * ethers.js returns "unknown" for chains it doesn't recognize, so we
+   * check our own config and a fallback map of Pali Wallet networks first.
+   */
+  private resolveChainName(chainId: string, ethersName: string): string {
+    // 1) Check our networkConfig.ts
+    const configNetwork = getNetworkByChainId(parseInt(chainId));
+    if (configNetwork) return configNetwork.name;
+
+    // Also check with string key (UTXO networks use string chainIds)
+    const configNetworkStr = getNetworkByChainId(chainId);
+    if (configNetworkStr) return configNetworkStr.name;
+
+    // 2) Fallback map for Pali Wallet / Syscoin ecosystem networks
+    const paliNetworkNames: Record<string, string> = {
+      '57': 'Syscoin NEVM',
+      '570': 'Rollux Mainnet',
+      '5700': 'Syscoin NEVM Testnet',
+      '57000': 'zkSYS PoB Devnet',
+      '57042': 'Syscoin Tanenbaum Testnet',
+      '57057': 'zkSYS Tesnet',
+      '5': 'Goerli Testnet',
+      '10': 'Optimism',
+      '56': 'BNB Smart Chain',
+      '97': 'BSC Testnet',
+      '43114': 'Avalanche C-Chain',
+      '43113': 'Avalanche Fuji Testnet',
+      '250': 'Fantom Opera',
+      '100': 'Gnosis Chain'
     };
+
+    if (paliNetworkNames[chainId]) return paliNetworkNames[chainId];
+
+    // 3) Use ethers.js name only if it's not "unknown"
+    if (ethersName && ethersName !== 'unknown') return ethersName;
+
+    // 4) Last resort
+    return `Chain ${chainId}`;
   }
 
   /* ===== Eventos ===== */
@@ -120,6 +182,7 @@ export class WalletService {
     this.isConnected = false;
     this.currentAddress = null;
     this.signer = null;
+    this.provider = null;
     this.currentNetwork = null;
 
     this.onDisconnectCallback?.();
@@ -138,12 +201,30 @@ export class WalletService {
   async connectWallet(): Promise<string> {
     if (!this.ethereum) throw new Error('WALLET_NOT_INSTALLED');
 
-    if (!this.provider) await this.initializeProvider();
+    // Always create a fresh provider to avoid stale cache after disconnect
+    await this.initializeProvider();
 
     try {
-      const accounts: string[] = await this.ethereum.request({
-        method: 'eth_requestAccounts'
+      // Create a Promise with a 15-second timeout
+      const connectionPromise = new Promise<string[]>((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          reject(new Error('CONNECTION_TIMEOUT'));
+        }, 15000);
+
+        this.ethereum!.request({
+          method: 'eth_requestAccounts'
+        })
+          .then((accounts: string[]) => {
+            clearTimeout(timeoutId);
+            resolve(accounts);
+          })
+          .catch((error: any) => {
+            clearTimeout(timeoutId);
+            reject(error);
+          });
       });
+
+      const accounts: string[] = await connectionPromise;
 
       if (!accounts.length) throw new Error('NO_ACCOUNTS_FOUND');
 
@@ -159,7 +240,8 @@ export class WalletService {
     } catch (error: any) {
       console.error('Connect error:', error);
 
-      if (error.code === 4001) throw new Error('CONNECTION_REJECTED');
+      if (error.message === 'CONNECTION_TIMEOUT') throw new Error('CONNECTION_TIMEOUT');
+      if (error.code === 4001 || error.message?.includes('User rejected')) throw new Error('CONNECTION_REJECTED');
       if (error.code === -32002) throw new Error('CONNECTION_PENDING');
 
       throw new Error('CONNECTION_ERROR');
@@ -167,17 +249,35 @@ export class WalletService {
   }
 
   async disconnectWallet(): Promise<void> {
-    this.handleDisconnection();
     this.cleanup();
+    // Reset state — this fires onDisconnectCallback
+    this.handleDisconnection();
   }
 
   async autoConnect(): Promise<boolean> {
     if (!this.ethereum) return false;
 
     try {
-      const accounts: string[] = await this.ethereum.request({
-        method: 'eth_accounts'
+      // Create a Promise with a 5-second timeout for autoConnect
+      const accountsPromise = new Promise<string[]>((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          reject(new Error('AUTOCONNECT_TIMEOUT'));
+        }, 5000);
+
+        this.ethereum!.request({
+          method: 'eth_accounts'
+        })
+          .then((accounts: string[]) => {
+            clearTimeout(timeoutId);
+            resolve(accounts);
+          })
+          .catch((error: any) => {
+            clearTimeout(timeoutId);
+            reject(error);
+          });
       });
+
+      const accounts: string[] = await accountsPromise;
 
       if (!accounts.length) return false;
 
@@ -191,7 +291,8 @@ export class WalletService {
       this.setupEventListeners();
 
       return true;
-    } catch {
+    } catch (error) {
+      console.warn('AutoConnect failed:', error);
       return false;
     }
   }
@@ -214,8 +315,24 @@ export class WalletService {
       throw new Error('WALLET_NOT_CONNECTED');
 
     try {
-      const balanceWei = await this.provider.getBalance(this.currentAddress);
-      return ethers.formatEther(balanceWei);
+      // Create a Promise with a 10-second timeout
+      const balancePromise = new Promise<string>((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          reject(new Error('BALANCE_FETCH_TIMEOUT'));
+        }, 10000);
+
+        this.provider!.getBalance(this.currentAddress!)
+          .then((balanceWei) => {
+            clearTimeout(timeoutId);
+            resolve(ethers.formatEther(balanceWei));
+          })
+          .catch((error) => {
+            clearTimeout(timeoutId);
+            reject(error);
+          });
+      });
+
+      return await balancePromise;
     } catch {
       throw new Error('BALANCE_FETCH_ERROR');
     }
@@ -233,6 +350,16 @@ export class WalletService {
     };
   }
 
+  /* ===== Accessors ===== */
+
+  getProvider(): ethers.BrowserProvider | null {
+    return this.provider;
+  }
+
+  getSigner(): ethers.JsonRpcSigner | null {
+    return this.signer;
+  }
+
   /* ===== Utils ===== */
 
   getCurrencySymbol(chainId: string): string {
@@ -242,13 +369,18 @@ export class WalletService {
       '11155111': 'ETH',
       '137': 'MATIC',
       '80001': 'MATIC',
+      '80002': 'MATIC',
       '57': 'SYS',
       '5700': 'SYS',
       '570': 'SYS',
       '57042': 'TSYS',
       '57000': 'TSYS',
       '8453': 'ETH',
-      '84531': 'ETH'
+      '84531': 'ETH',
+      '84532': 'ETH',
+      '42161': 'ETH',
+      '421614': 'ETH',
+      '17000': 'hETH'
     };
 
     return map[chainId] ?? 'ETH';
