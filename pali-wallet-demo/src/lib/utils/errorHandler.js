@@ -18,6 +18,13 @@ export function mapWalletError(error) {
       action: 'install'
     },
     
+    // Errores de modo UTXO
+    'WALLET_IN_UTXO_MODE': {
+      message: '⚠️ PaliWallet está en modo UTXO (Syscoin/Bitcoin). Por favor, cambia a una red EVM (Ethereum, Polygon, etc.) desde la extensión de PaliWallet.',
+      type: 'warning',
+      action: 'switch_network'
+    },
+    
     // Errores de conexión
     'CONNECTION_REJECTED': {
       message: 'Conexión rechazada por el usuario. Por favor, acepta la conexión en Pali Wallet.',
@@ -79,6 +86,18 @@ export function mapWalletError(error) {
     // Errores específicos de Ethereum
     'INSUFFICIENT_FUNDS': {
       message: 'Fondos insuficientes para realizar la transacción.',
+      type: 'warning',
+      action: 'none'
+    },
+    
+    'INVALID_AMOUNT': {
+      message: 'Debes ingresar un monto válido mayor a 0.',
+      type: 'warning',
+      action: 'none'
+    },
+    
+    'INVALID_RECIPIENT_ADDRESS': {
+      message: 'La dirección del destinatario no es válida.',
       type: 'warning',
       action: 'none'
     },
@@ -166,6 +185,13 @@ export function getErrorSuggestions(errorCode) {
     'WALLET_NOT_INSTALLED': [
       'Instala Pali Wallet desde la Chrome Web Store',
       'Recarga la página después de la instalación'
+    ],
+    
+    'WALLET_IN_UTXO_MODE': [
+      'Abre la extensión de PaliWallet',
+      'Haz clic en el selector de red (arriba)',
+      'Selecciona una red EVM como Ethereum, Polygon, Arbitrum o Base',
+      'Recarga esta página y vuelve a conectar'
     ],
     
     'CONNECTION_REJECTED': [

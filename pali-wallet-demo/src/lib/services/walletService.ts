@@ -19,6 +19,7 @@ interface BalanceInfo {
 declare global {
   interface Window {
     ethereum?: any;
+    pali?: any;
   }
 }
 
@@ -40,15 +41,49 @@ export class WalletService {
 
   private get ethereum() {
     if (typeof window === 'undefined') return undefined;
-    return window.ethereum;
+    
+    // Verificar si ethereum es PaliWallet
+    if (window.ethereum?.isPali) {
+      return window.ethereum;
+    }
+    
+    // Priorizar PaliWallet si está disponible en window.pali
+    // pero verificar que tenga el método request
+    if (window.pali && typeof window.pali.request === 'function') {
+      return window.pali;
+    }
+    
+    // Fallback a ethereum genérico (MetaMask u otros)
+    if (window.ethereum) {
+      return window.ethereum;
+    }
+    
+    return undefined;
   }
 
   isWalletInstalled(): boolean {
     return !!this.ethereum;
   }
 
-  async waitForWallet(timeout = 3000): Promise<boolean> {
-    if (this.isWalletInstalled()) return true;
+  isPaliWalletInstalled(): boolean {
+    if (typeof window === 'undefined') return false;
+    return !!(window.ethereum?.isPali || (window.pali && typeof window.pali.request === 'function'));
+  }
+
+  getWalletType(): 'pali' | 'metamask' | 'unknown' {
+    if (typeof window === 'undefined') return 'unknown';
+    
+    if (window.ethereum?.isPali) return 'pali';
+    if (window.pali && typeof window.pali.request === 'function') return 'pali';
+    if (window.ethereum?.isMetaMask) return 'metamask';
+    
+    return 'unknown';
+  }
+
+  async waitForWallet(timeout = 5000): Promise<boolean> {
+    if (this.isWalletInstalled()) {
+      return true;
+    }
 
     return new Promise(resolve => {
       const interval = setInterval(() => {
@@ -68,13 +103,26 @@ export class WalletService {
   /* ===== Provider ===== */
 
   async initializeProvider(): Promise<void> {
-    if (!this.ethereum) throw new Error('WALLET_NOT_INSTALLED');
+    if (!this.ethereum) {
+      throw new Error('WALLET_NOT_INSTALLED');
+    }
+
+    console.log('🔧 Inicializando provider...');
+    console.log('Chain type:', this.ethereum.chainType);
 
     this.provider = new ethers.BrowserProvider(this.ethereum);
 
     try {
-      await this.provider.getNetwork();
-    } catch {
+      const network = await this.provider.getNetwork();
+      console.log('✅ Provider inicializado correctamente. Network:', network);
+    } catch (error) {
+      console.error('❌ Error al inicializar provider:', error);
+      
+      // Si falla, podría ser que esté en modo UTXO puro (Bitcoin/Litecoin)
+      if (this.ethereum.chainType === 'bitcoin' || this.ethereum.chainType === 'litecoin') {
+        throw new Error('WALLET_IN_UTXO_MODE');
+      }
+      
       throw new Error('PROVIDER_INITIALIZATION_ERROR');
     }
   }
@@ -154,15 +202,39 @@ export class WalletService {
   /* ===== Eventos ===== */
 
   private handleAccountsChanged = (accounts: string[]) => {
+    console.log('👤 accountsChanged event:', accounts);
+    
     if (!accounts.length) return this.handleDisconnection();
 
     this.currentAddress = accounts[0];
     this.onAccountChangedCallback?.(accounts[0]);
   };
 
-  private handleChainChanged = (chainId: string) => {
+private handleChainChanged = async (chainId: string) => {
+  try {
+    this.provider = null;
+    this.signer = null;
+
+    await this.initializeProvider();
+
+    if (this.provider) {
+      this.signer = await this.provider.getSigner();
+    }
+
+    this.currentNetwork = await this.getNetworkInfo();
+
+    // 🔥 FORZAR actualización real
+    const balance = await this.getBalance();
+
     this.onChainChangedCallback?.(chainId);
-  };
+
+    console.log('🌐 Nueva red:', this.currentNetwork);
+    console.log('💰 Nuevo balance:', balance);
+
+  } catch (error) {
+    console.error('❌ Error al manejar cambio de red:', error);
+  }
+};
 
   private handleDisconnectEvent = () => {
     this.handleDisconnection();
@@ -173,9 +245,13 @@ export class WalletService {
 
     this.cleanup();
 
+    console.log('🎧 Configurando event listeners...');
+    
     this.ethereum.on('accountsChanged', this.handleAccountsChanged);
     this.ethereum.on('chainChanged', this.handleChainChanged);
     this.ethereum.on('disconnect', this.handleDisconnectEvent);
+    
+    console.log('✅ Event listeners configurados');
   }
 
   private handleDisconnection(): void {
@@ -199,15 +275,24 @@ export class WalletService {
   /* ===== Conexión ===== */
 
   async connectWallet(): Promise<string> {
-    if (!this.ethereum) throw new Error('WALLET_NOT_INSTALLED');
+    if (!this.ethereum) {
+      throw new Error('WALLET_NOT_INSTALLED');
+    }
+
+    console.log('🔗 Conectando con:', this.getWalletType());
+    console.log('Provider:', this.ethereum);
+    console.log('Chain type:', this.ethereum.chainType);
 
     // Always create a fresh provider to avoid stale cache after disconnect
     await this.initializeProvider();
 
     try {
+      console.log('📡 Solicitando cuentas a PaliWallet...');
+      
       // Create a Promise with a 15-second timeout
       const connectionPromise = new Promise<string[]>((resolve, reject) => {
         const timeoutId = setTimeout(() => {
+          console.error('❌ Timeout esperando respuesta de PaliWallet');
           reject(new Error('CONNECTION_TIMEOUT'));
         }, 15000);
 
@@ -216,18 +301,23 @@ export class WalletService {
         })
           .then((accounts: string[]) => {
             clearTimeout(timeoutId);
+            console.log('✅ Cuentas recibidas:', accounts);
             resolve(accounts);
           })
           .catch((error: any) => {
             clearTimeout(timeoutId);
+            console.error('❌ Error en eth_requestAccounts:', error);
             reject(error);
           });
       });
 
       const accounts: string[] = await connectionPromise;
 
-      if (!accounts.length) throw new Error('NO_ACCOUNTS_FOUND');
+      if (!accounts.length) {
+        throw new Error('NO_ACCOUNTS_FOUND');
+      }
 
+      console.log('✅ Obteniendo signer...');
       this.signer = await this.provider!.getSigner();
       this.currentAddress = accounts[0];
       this.isConnected = true;
@@ -235,12 +325,14 @@ export class WalletService {
 
       this.setupEventListeners();
 
+      console.log('✅ Conexión completada');
       return accounts[0];
 
     } catch (error: any) {
-      console.error('Connect error:', error);
+      console.error('❌ Error completo:', error);
 
       if (error.message === 'CONNECTION_TIMEOUT') throw new Error('CONNECTION_TIMEOUT');
+      if (error.message === 'WALLET_IN_UTXO_MODE') throw error;
       if (error.code === 4001 || error.message?.includes('User rejected')) throw new Error('CONNECTION_REJECTED');
       if (error.code === -32002) throw new Error('CONNECTION_PENDING');
 
@@ -255,7 +347,9 @@ export class WalletService {
   }
 
   async autoConnect(): Promise<boolean> {
-    if (!this.ethereum) return false;
+    if (!this.ethereum) {
+      return false;
+    }
 
     try {
       // Create a Promise with a 5-second timeout for autoConnect
@@ -279,7 +373,9 @@ export class WalletService {
 
       const accounts: string[] = await accountsPromise;
 
-      if (!accounts.length) return false;
+      if (!accounts.length) {
+        return false;
+      }
 
       await this.initializeProvider();
 

@@ -32,8 +32,10 @@
   const friendlyMessage = $derived.by(() => {
     const errorMessages = {
       'WALLET_NOT_INSTALLED': 'Pali Wallet no está instalada. Por favor, instálala desde la Chrome Web Store.',
+      'WALLET_IN_UTXO_MODE': '⚠️ PaliWallet está en modo UTXO (Syscoin/Bitcoin). Por favor, cambia a una red EVM (Ethereum, Polygon, Arbitrum, Base, etc.) desde la extensión de PaliWallet y recarga esta página.',
       'CONNECTION_REJECTED': 'Conexión rechazada. Por favor, acepta la conexión en Pali Wallet.',
       'CONNECTION_PENDING': 'Ya hay una solicitud de conexión pendiente. Revisa Pali Wallet.',
+      'CONNECTION_TIMEOUT': 'La conexión tardó demasiado. Asegúrate de que Pali Wallet esté activo.',
       'CONNECTION_ERROR': 'Error al conectar con la wallet. Inténtalo de nuevo.',
       'WALLET_NOT_CONNECTED': 'Wallet no conectada. Por favor, conecta tu wallet primero.',
       'BALANCE_FETCH_ERROR': 'Error al obtener el saldo. Verifica tu conexión a internet.',

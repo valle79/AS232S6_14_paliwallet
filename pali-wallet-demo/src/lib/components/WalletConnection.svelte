@@ -25,12 +25,15 @@
 
   let isWalletInstalled = $state(false);
   let isCheckingWallet = $state(true);
+  let walletType = $state('unknown');
   
   async function checkWalletInstallation() {
     isWalletInstalled = walletService.isWalletInstalled();
+    walletType = walletService.getWalletType();
     
     if (!isWalletInstalled) {
-      isWalletInstalled = await walletService.waitForWallet(3000);
+      isWalletInstalled = await walletService.waitForWallet(5000);
+      walletType = walletService.getWalletType();
     }
     
     isCheckingWallet = false;
@@ -46,6 +49,7 @@
     const interval = setInterval(() => {
       if (!isWalletInstalled) {
         isWalletInstalled = walletService.isWalletInstalled();
+        walletType = walletService.getWalletType();
       }
     }, 2000);
     
@@ -108,7 +112,7 @@
       </h3>
       
       <p class="text-sm text-slate-400 max-w-lg mx-auto mb-8">
-        Para continuar, necesitas instalar Pali Wallet o MetaMask en tu navegador. Es una extensión segura que te permite gestionar criptomonedas.
+        Para continuar, necesitas instalar PaliWallet en tu navegador. Es una extensión segura que te permite gestionar criptomonedas y activos digitales.
       </p>
       
       <a
@@ -133,9 +137,15 @@
         Conectar Wallet
       </h3>
       
-      <p class="text-sm text-slate-400 max-w-lg mx-auto mb-8">
+      <p class="text-sm text-slate-400 max-w-lg mx-auto mb-6">
         Conecta tu billetera para comenzar a usar la aplicación. Podrás ver tu saldo, dirección pública e información de la red blockchain en tiempo real.
       </p>
+      
+      {#if walletType !== 'unknown'}
+        <p class="text-xs text-blue-400 mb-8">
+          🔷 {walletType === 'pali' ? 'PaliWallet' : walletType === 'metamask' ? 'MetaMask' : 'Wallet'} detectada
+        </p>
+      {/if}
       
       <button
         type="button"

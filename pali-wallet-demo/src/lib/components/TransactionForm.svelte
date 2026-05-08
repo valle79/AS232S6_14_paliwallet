@@ -11,6 +11,7 @@
   import { copyToClipboard } from '../utils/formatters';
   import LoadingSpinner from './LoadingSpinner.svelte';
   import { ALL_NETWORKS } from '../config/networkConfig';
+  import { onMount } from 'svelte';
 
   /* ================================
      PROPS
@@ -33,6 +34,23 @@
   let recentTransactions = $state<
     Array<{ hash: string; to: string; value: string; status: string; timestamp: number }>
   >([]);
+
+  /* ================================
+     LIFECYCLE
+  =================================*/
+  onMount(() => {
+    // Cargar transacciones del historial
+    const history = transactionService.getTransactionHistory();
+    recentTransactions = history.map(tx => ({
+      hash: tx.hash,
+      to: tx.to,
+      value: tx.value,
+      status: tx.status || 'pending',
+      timestamp: tx.timestamp || Date.now()
+    }));
+    
+    console.log('📋 Transacciones cargadas:', recentTransactions.length);
+  });
 
   /* ================================
      DERIVED VALUES
@@ -71,33 +89,42 @@
   async function estimateTransaction(): Promise<void> {
     if (!canEstimateGas) return;
 
+    // Validar que el monto sea válido
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      showError('Ingresa un monto válido mayor a 0');
+      return;
+    }
+
     try {
       isLoading = true;
+
+      // Convertir amount a string para asegurar compatibilidad
+      const amountStr = String(amount);
+      
+      console.log('📊 Estimando gas para:', { to: recipientAddress, value: amountStr });
 
       const currentGasPrice = await transactionService.getGasPrice();
       gasPrice = currentGasPrice;
 
       const estimated = await transactionService.estimateGas({
         to: recipientAddress,
-        value: amount
+        value: amountStr
       });
 
       estimatedGas = estimated;
 
       const estimatedInWei = BigInt(estimated);
-      const gasPriceInWei = transactionService.toWei(currentGasPrice);
+      const gasPriceInWei = BigInt(Math.floor(parseFloat(currentGasPrice) * 1e9)); // Convert Gwei to Wei
       const feeInWei = estimatedInWei * gasPriceInWei;
       totalFee = transactionService.fromWei(feeInWei);
 
-      showInfo(`Gas estimado: ${estimated} — Fee: ~${parseFloat(totalFee).toFixed(6)} ETH`);
+      showSuccess(`✅ Gas estimado: ${estimated} unidades — Fee: ~${parseFloat(totalFee).toFixed(6)} ${currentCurrency()}`);
     } catch (error: any) {
-      console.error('Estimation error:', error);
+      console.warn('⚠️ Estimación de gas falló, pero puedes enviar la transacción igual');
       
-      if (error.message === 'INSUFFICIENT_FUNDS') {
-        showError('❌ Fondos insuficientes — Necesitas tokens nativos de la red para pagar el gas');
-      } else {
-        showError('No se pudo estimar el gas');
-      }
+      // No mostrar error crítico, solo advertencia
+      showInfo('⚠️ No se pudo estimar el gas, pero puedes intentar enviar la transacción');
     } finally {
       isLoading = false;
     }
@@ -130,9 +157,12 @@
         showInfo('Preparando interacción con Smart Contract (Opcional)...');
       }
 
+      // Convertir amount a string para asegurar compatibilidad
+      const amountStr = String(amount);
+
       const hash = await transactionService.sendTransaction({
         to: recipientAddress,
-        value: amount
+        value: amountStr
       });
 
       transactionHash = hash;
@@ -159,9 +189,10 @@
 
       const errorMessages: Record<string, string> = {
         INVALID_RECIPIENT_ADDRESS: 'Dirección de destinatario inválida',
-        INSUFFICIENT_FUNDS: '❌ No tienes suficientes fondos nativos de la red para pagar el gas + transacción. Por favor, obtén tokens nativos desde un faucet.',
+        INVALID_AMOUNT: 'Debes ingresar un monto válido mayor a 0',
+        INSUFFICIENT_FUNDS: `❌ No tienes suficientes fondos. Necesitas ${currentCurrency()} para pagar el gas + la transacción. Obtén tokens de prueba desde un faucet.`,
         TRANSACTION_REJECTED: 'Transacción rechazada por el usuario',
-        GAS_ESTIMATION_FAILED: 'No se pudo estimar el gas — verifica que tengas fondos nativos de la red',
+        GAS_ESTIMATION_FAILED: `No se pudo estimar el gas. Verifica que tengas fondos nativos (${currentCurrency()}) en tu wallet.`,
         TRANSACTION_FAILED: 'La transacción falló',
         SIGNER_NOT_INITIALIZED: 'Conecta tu wallet primero'
       };
@@ -257,6 +288,15 @@
       <div class="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 mb-6">
         <p class="text-amber-300 text-sm">
           ⚠️ Debes conectar tu wallet para enviar transacciones
+        </p>
+      </div>
+    {:else}
+      <div class="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 mb-6">
+        <p class="text-blue-300 text-sm font-semibold mb-2">
+          💡 Necesitas fondos de prueba
+        </p>
+        <p class="text-blue-200 text-xs leading-relaxed">
+          Para enviar transacciones en zkSYS Testnet, necesitas tokens TSYS de prueba. Obtén fondos gratis desde el faucet oficial de Syscoin.
         </p>
       </div>
     {/if}

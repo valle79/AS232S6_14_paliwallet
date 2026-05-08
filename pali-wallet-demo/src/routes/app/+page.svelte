@@ -60,15 +60,39 @@
   =================================*/
   function setupWalletEventListeners() {
     walletService.onAccountChanged(async (newAddress) => {
+      console.log('👤 Cuenta cambiada a:', newAddress);
       walletState.address = newAddress;
       await refreshBalance();
       showInfo('Cuenta cambiada');
     });
 
-    walletService.onChainChanged(async () => {
-      await refreshNetworkInfo();
-      await refreshBalance();
-      showInfo('Red cambiada');
+    walletService.onChainChanged(async (chainId) => {
+      console.log('🔄 Red cambiada. ChainId:', chainId);
+      console.log('Actualizando todos los datos...');
+      
+      try {
+        // Actualizar información de red
+        const networkInfo = await walletService.getNetworkInfo();
+        walletState.network = networkInfo;
+        walletState.currency = walletService.getCurrencySymbol(networkInfo.chainId);
+        
+        console.log('✅ Red actualizada:', networkInfo);
+        
+        // Actualizar balance
+        await refreshBalance();
+        
+        // Actualizar provider y signer en transactionService
+        const provider = walletService.getProvider();
+        const signer = walletService.getSigner();
+        if (provider) transactionService.setProvider(provider);
+        if (signer) transactionService.setSigner(signer);
+        
+        console.log('✅ Todos los datos actualizados');
+        showSuccess(`Red cambiada a ${networkInfo.name}`);
+      } catch (error) {
+        console.error('Error al cambiar de red:', error);
+        showError('Error al actualizar información de red');
+      }
     });
 
     walletService.onDisconnect(() => {
