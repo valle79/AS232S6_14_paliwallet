@@ -66,33 +66,26 @@
       showInfo('Cuenta cambiada');
     });
 
-    walletService.onChainChanged(async (chainId) => {
-      console.log('🔄 Red cambiada. ChainId:', chainId);
-      console.log('Actualizando todos los datos...');
+    // 🔥 RECIBIR DATOS COMPLETOS DEL CALLBACK
+    walletService.onChainChanged(({ chainId, network, balance }) => {
+      console.log('🔄 Red cambiada - Actualizando UI con datos completos');
+      console.log('ChainId:', chainId);
+      console.log('Network:', network);
+      console.log('Balance:', balance);
       
-      try {
-        // Actualizar información de red
-        const networkInfo = await walletService.getNetworkInfo();
-        walletState.network = networkInfo;
-        walletState.currency = walletService.getCurrencySymbol(networkInfo.chainId);
-        
-        console.log('✅ Red actualizada:', networkInfo);
-        
-        // Actualizar balance
-        await refreshBalance();
-        
-        // Actualizar provider y signer en transactionService
-        const provider = walletService.getProvider();
-        const signer = walletService.getSigner();
-        if (provider) transactionService.setProvider(provider);
-        if (signer) transactionService.setSigner(signer);
-        
-        console.log('✅ Todos los datos actualizados');
-        showSuccess(`Red cambiada a ${networkInfo.name}`);
-      } catch (error) {
-        console.error('Error al cambiar de red:', error);
-        showError('Error al actualizar información de red');
-      }
+      // 🔥 ACTUALIZAR TODO EL ESTADO DE UNA VEZ (REACTIVIDAD)
+      walletState.network = network;
+      walletState.balance = balance;
+      walletState.currency = walletService.getCurrencySymbol(network.chainId);
+      
+      // Actualizar provider y signer en transactionService
+      const provider = walletService.getProvider();
+      const signer = walletService.getSigner();
+      if (provider) transactionService.setProvider(provider);
+      if (signer) transactionService.setSigner(signer);
+      
+      console.log('✅ UI actualizada completamente');
+      showSuccess(`Red cambiada a ${network.name}`);
     });
 
     walletService.onDisconnect(() => {

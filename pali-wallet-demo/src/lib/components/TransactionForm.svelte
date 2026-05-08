@@ -38,7 +38,7 @@
   /* ================================
      LIFECYCLE
   =================================*/
-  onMount(() => {
+  onMount(async () => {
     // Cargar transacciones del historial
     const history = transactionService.getTransactionHistory();
     recentTransactions = history.map(tx => ({
@@ -50,11 +50,46 @@
     }));
     
     console.log('📋 Transacciones cargadas:', recentTransactions.length);
+    
+    // 🔥 Verificar estado de transacciones pendientes
+    if (isConnected && recentTransactions.length > 0) {
+      await updatePendingTransactions();
+    }
   });
 
   /* ================================
-     DERIVED VALUES
+     FUNCTIONS
   =================================*/
+
+  /**
+   * Actualizar estado de transacciones pendientes
+   */
+  async function updatePendingTransactions(): Promise<void> {
+    const pendingTxs = recentTransactions.filter(tx => tx.status === 'pending');
+    
+    if (pendingTxs.length === 0) return;
+    
+    console.log('🔄 Verificando estado de', pendingTxs.length, 'transacciones pendientes...');
+    
+    for (const tx of pendingTxs) {
+      try {
+        // Actualizar estado en el servicio (esto también actualiza localStorage)
+        await transactionService.updateTransactionStatus(tx.hash);
+        
+        // Recargar el historial actualizado
+        const history = transactionService.getTransactionHistory();
+        recentTransactions = history.map(t => ({
+          hash: t.hash,
+          to: t.to,
+          value: t.value,
+          status: t.status || 'pending',
+          timestamp: t.timestamp || Date.now()
+        }));
+      } catch (error) {
+        console.warn(`⚠️ No se pudo verificar transacción ${tx.hash.substring(0, 10)}...`);
+      }
+    }
+  }
   const isFormValid = $derived(
     recipientAddress.trim().length > 0 &&
     parseFloat(String(amount)) > 0 &&

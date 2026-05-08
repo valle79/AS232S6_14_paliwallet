@@ -34,7 +34,7 @@ export class WalletService {
   public currentNetwork: NetworkInfo | null = null;
 
   private onAccountChangedCallback: ((address: string) => void) | null = null;
-  private onChainChangedCallback: ((chainId: string) => void) | null = null;
+  private onChainChangedCallback: ((data: { chainId: string; network: NetworkInfo; balance: string }) => void) | null = null;
   private onDisconnectCallback: (() => void) | null = null;
 
   /* ===== Utils ===== */
@@ -211,7 +211,13 @@ export class WalletService {
   };
 
 private handleChainChanged = async (chainId: string) => {
+  console.log('🔄 chainChanged event. ChainId (hex):', chainId);
+  
   try {
+    // 🔥 NORMALIZAR chainId de HEX a DECIMAL
+    const normalizedChainId = parseInt(chainId, 16).toString();
+    console.log('🔄 ChainId normalizado (decimal):', normalizedChainId);
+    
     this.provider = null;
     this.signer = null;
 
@@ -223,13 +229,18 @@ private handleChainChanged = async (chainId: string) => {
 
     this.currentNetwork = await this.getNetworkInfo();
 
-    // 🔥 FORZAR actualización real
+    // Obtener nuevo balance
     const balance = await this.getBalance();
 
-    this.onChainChangedCallback?.(chainId);
+    console.log('✅ Nueva red:', this.currentNetwork);
+    console.log('✅ Nuevo balance:', balance);
 
-    console.log('🌐 Nueva red:', this.currentNetwork);
-    console.log('💰 Nuevo balance:', balance);
+    // 🔥 ENVIAR DATOS COMPLETOS AL CALLBACK
+    this.onChainChangedCallback?.({
+      chainId: normalizedChainId,
+      network: this.currentNetwork,
+      balance
+    });
 
   } catch (error) {
     console.error('❌ Error al manejar cambio de red:', error);
@@ -246,12 +257,66 @@ private handleChainChanged = async (chainId: string) => {
     this.cleanup();
 
     console.log('🎧 Configurando event listeners...');
+    console.log('Provider:', this.ethereum);
+    
+    // Verificar que el provider tenga los métodos necesarios
+    if (typeof this.ethereum.on !== 'function') {
+      console.warn('⚠️ El provider no soporta eventos .on()');
+      return;
+    }
     
     this.ethereum.on('accountsChanged', this.handleAccountsChanged);
     this.ethereum.on('chainChanged', this.handleChainChanged);
     this.ethereum.on('disconnect', this.handleDisconnectEvent);
     
     console.log('✅ Event listeners configurados');
+    
+    // 🔥 AGREGAR POLLING COMO RESPALDO (cada 3 segundos)
+    this.startNetworkPolling();
+  }
+
+  private networkPollingInterval: NodeJS.Timeout | null = null;
+  private lastKnownChainId: string | null = null;
+
+  private startNetworkPolling(): void {
+    // Limpiar polling anterior si existe
+    if (this.networkPollingInterval) {
+      clearInterval(this.networkPollingInterval);
+    }
+
+    console.log('🔄 Iniciando polling de red cada 3 segundos...');
+
+    this.networkPollingInterval = setInterval(async () => {
+      if (!this.isConnected) return;
+
+      try {
+        // 🔥 NO usar el provider existente, usar directamente ethereum
+        if (!this.ethereum) return;
+        
+        const chainIdHex = await this.ethereum.request({ method: 'eth_chainId' });
+        const currentChainId = parseInt(chainIdHex, 16).toString();
+
+        // Si cambió la red, disparar el evento manualmente
+        if (this.lastKnownChainId && this.lastKnownChainId !== currentChainId) {
+          console.log('🔄 Polling detectó cambio de red:', this.lastKnownChainId, '→', currentChainId);
+          
+          // Disparar el evento con el chainId en HEX
+          this.handleChainChanged(chainIdHex);
+        }
+
+        this.lastKnownChainId = currentChainId;
+      } catch (error) {
+        console.error('Error en polling de red:', error);
+      }
+    }, 3000);
+  }
+
+  private stopNetworkPolling(): void {
+    if (this.networkPollingInterval) {
+      clearInterval(this.networkPollingInterval);
+      this.networkPollingInterval = null;
+      console.log('🛑 Polling de red detenido');
+    }
   }
 
   private handleDisconnection(): void {
@@ -270,6 +335,9 @@ private handleChainChanged = async (chainId: string) => {
     this.ethereum.removeListener('accountsChanged', this.handleAccountsChanged);
     this.ethereum.removeListener('chainChanged', this.handleChainChanged);
     this.ethereum.removeListener('disconnect', this.handleDisconnectEvent);
+    
+    // Detener polling
+    this.stopNetworkPolling();
   }
 
   /* ===== Conexión ===== */
@@ -322,6 +390,9 @@ private handleChainChanged = async (chainId: string) => {
       this.currentAddress = accounts[0];
       this.isConnected = true;
       this.currentNetwork = await this.getNetworkInfo();
+      
+      // 🔥 Inicializar lastKnownChainId
+      this.lastKnownChainId = this.currentNetwork.chainId;
 
       this.setupEventListeners();
 
@@ -383,6 +454,9 @@ private handleChainChanged = async (chainId: string) => {
       this.currentAddress = accounts[0];
       this.isConnected = true;
       this.currentNetwork = await this.getNetworkInfo();
+      
+      // 🔥 Inicializar lastKnownChainId
+      this.lastKnownChainId = this.currentNetwork.chainId;
 
       this.setupEventListeners();
 
@@ -486,7 +560,7 @@ private handleChainChanged = async (chainId: string) => {
     this.onAccountChangedCallback = cb;
   }
 
-  onChainChanged(cb: (chainId: string) => void) {
+  onChainChanged(cb: (data: { chainId: string; network: NetworkInfo; balance: string }) => void) {
     this.onChainChangedCallback = cb;
   }
 

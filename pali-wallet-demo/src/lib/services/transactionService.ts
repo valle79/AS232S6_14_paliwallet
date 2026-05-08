@@ -300,10 +300,47 @@ export class TransactionService {
 
     try {
       const receipt = await this.provider.waitForTransaction(hash, confirmations);
+      
+      // 🔥 Actualizar estado en el historial
+      if (receipt && this.transactionHistory.has(hash)) {
+        const tx = this.transactionHistory.get(hash)!;
+        tx.status = receipt.status === 1 ? 'success' : 'failed';
+        tx.confirmations = receipt.confirmations || 0;
+        this.transactionHistory.set(hash, tx);
+        
+        // Guardar en localStorage
+        this.saveTransactionsToStorage();
+      }
+      
       return receipt as unknown as TransactionReceipt;
     } catch (error) {
       console.error('Transaction confirmation error:', error);
       return null;
+    }
+  }
+
+  /**
+   * Actualizar estado de una transacción específica
+   */
+  async updateTransactionStatus(hash: string): Promise<void> {
+    if (!this.provider) return;
+
+    try {
+      const receipt = await this.provider.getTransactionReceipt(hash);
+      
+      if (receipt && this.transactionHistory.has(hash)) {
+        const tx = this.transactionHistory.get(hash)!;
+        tx.status = receipt.status === 1 ? 'success' : 'failed';
+        tx.confirmations = receipt.confirmations || 0;
+        this.transactionHistory.set(hash, tx);
+        
+        // Guardar en localStorage
+        this.saveTransactionsToStorage();
+        
+        console.log(`✅ Estado de transacción ${hash.substring(0, 10)}... actualizado a: ${tx.status}`);
+      }
+    } catch (error) {
+      console.error('Error al actualizar estado de transacción:', error);
     }
   }
 
