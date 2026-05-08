@@ -166,9 +166,22 @@
   {:else}
     <!-- Wallet connected -->
     <div class="glass-card p-12 sm:p-16 text-center">
-      <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-8">
-        <span class="text-4xl">✅</span>
-      </div>
+<div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-8 
+bg-gradient-to-br from-indigo-500 via-green-600 to-pink-500 
+shadow-[0_0_25px_rgba(139,92,246,0.6)] 
+animate-[float_3s_ease-in-out_infinite]">
+
+  <span class="text-4xl text-white animate-[pulse_2s_infinite]">🪙</span>
+
+  <style>
+    @keyframes float {
+      0% { transform: translateY(0px) scale(1); }
+      50% { transform: translateY(-8px) scale(1.05); }
+      100% { transform: translateY(0px) scale(1); }
+    }
+  </style>
+
+</div>
       
       <h3 class="text-2xl font-bold text-white mb-3">
         Wallet Conectada
