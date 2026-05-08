@@ -129,7 +129,7 @@
   {:else if !isConnected}
     <!-- Wallet installed but not connected -->
     <div class="glass-card p-12 sm:p-16 text-center">
-      <div class="inline-flex items-center justify-center w-20 h-20 bg-blue-500/10 rounded-2xl mb-8">
+      <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-8">
         <span class="text-4xl">🔗</span>
       </div>
       
@@ -166,7 +166,7 @@
   {:else}
     <!-- Wallet connected -->
     <div class="glass-card p-12 sm:p-16 text-center">
-      <div class="inline-flex items-center justify-center w-20 h-20 bg-emerald-500/10 rounded-2xl mb-8">
+      <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-8">
         <span class="text-4xl">✅</span>
       </div>
       
