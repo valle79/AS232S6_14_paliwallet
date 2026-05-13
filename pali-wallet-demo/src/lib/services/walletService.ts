@@ -178,8 +178,8 @@ export class WalletService {
       '570': 'Rollux Mainnet',
       '5700': 'Syscoin NEVM Testnet',
       '57000': 'zkSYS PoB Devnet',
-      '57042': 'Syscoin Tanenbaum Testnet',
-      '57057': 'zkSYS Tesnet',
+      '57042': 'zkSYS PoB Devnet',
+      '57057': 'zkSYS Testnet',
       '5': 'Goerli Testnet',
       '10': 'Optimism',
       '56': 'BNB Smart Chain',
@@ -187,7 +187,9 @@ export class WalletService {
       '43114': 'Avalanche C-Chain',
       '43113': 'Avalanche Fuji Testnet',
       '250': 'Fantom Opera',
-      '100': 'Gnosis Chain'
+      '100': 'Gnosis Chain',
+      '11155111': 'Sepolia',
+      '560048': 'Ethereum Hoodi'
     };
 
     if (paliNetworkNames[chainId]) return paliNetworkNames[chainId];
@@ -537,20 +539,22 @@ private handleChainChanged = async (chainId: string) => {
       '1': 'ETH',
       '5': 'ETH',
       '11155111': 'ETH',
+      '17000': 'hETH',
+      '560048': 'ETH',
       '137': 'MATIC',
       '80001': 'MATIC',
       '80002': 'MATIC',
       '57': 'SYS',
-      '5700': 'SYS',
+      '5700': 'TSYS',
       '570': 'SYS',
       '57042': 'TSYS',
       '57000': 'TSYS',
+      '57057': 'TSYS',
       '8453': 'ETH',
       '84531': 'ETH',
       '84532': 'ETH',
       '42161': 'ETH',
-      '421614': 'ETH',
-      '17000': 'hETH'
+      '421614': 'ETH'
     };
 
     return map[chainId] ?? 'ETH';

@@ -1,7 +1,7 @@
 <script>
   /**
    * WalletConnection - Componente para manejar la conexión/desconexión de wallet
-   * 
+   *
    * Props:
    * - isConnected: boolean
    * - isLoading: boolean
@@ -9,53 +9,53 @@
    * - onconnect: () => void
    * - ondisconnect: () => void
    */
-  
-  import { onMount } from 'svelte';
-  import LoadingSpinner from './LoadingSpinner.svelte';
-  import ErrorMessage from './ErrorMessage.svelte';
-  import { walletService } from '../services/walletService.ts';
-  
-  let { 
+
+  import { onMount } from "svelte";
+  import LoadingSpinner from "./LoadingSpinner.svelte";
+  import ErrorMessage from "./ErrorMessage.svelte";
+  import { walletService } from "../services/walletService.ts";
+
+  let {
     isConnected = false,
     isLoading = false,
-    error = '',
+    error = "",
     onconnect = () => {},
-    ondisconnect = () => {}
+    ondisconnect = () => {},
   } = $props();
 
   let isWalletInstalled = $state(false);
   let isCheckingWallet = $state(true);
-  let walletType = $state('unknown');
-  
+  let walletType = $state("unknown");
+
   async function checkWalletInstallation() {
     isWalletInstalled = walletService.isWalletInstalled();
     walletType = walletService.getWalletType();
-    
+
     if (!isWalletInstalled) {
       isWalletInstalled = await walletService.waitForWallet(5000);
       walletType = walletService.getWalletType();
     }
-    
+
     isCheckingWallet = false;
   }
-  
+
   onMount(() => {
     checkWalletInstallation();
-    
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', checkWalletInstallation);
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", checkWalletInstallation);
     }
-    
+
     const interval = setInterval(() => {
       if (!isWalletInstalled) {
         isWalletInstalled = walletService.isWalletInstalled();
         walletType = walletService.getWalletType();
       }
     }, 2000);
-    
+
     return () => {
       clearInterval(interval);
-      document.removeEventListener('DOMContentLoaded', checkWalletInstallation);
+      document.removeEventListener("DOMContentLoaded", checkWalletInstallation);
     };
   });
 
@@ -69,52 +69,50 @@
     ondisconnect();
   }
 
-  const PALI_WALLET_INSTALL_URL = 'https://chrome.google.com/webstore/detail/pali-wallet/mlbnicldlpdimbjdcncnklfempedeipj';
+  const PALI_WALLET_INSTALL_URL =
+    "https://chrome.google.com/webstore/detail/pali-wallet/mlbnicldlpdimbjdcncnklfempedeipj";
 </script>
 
 <div class="wallet-connection-container">
   <!-- Error message -->
   {#if error}
     <div class="mb-6">
-      <ErrorMessage 
-        message={error} 
-        type="error" 
-        dismissible={true}
-      />
+      <ErrorMessage message={error} type="error" dismissible={true} />
     </div>
   {/if}
 
   {#if isCheckingWallet}
     <!-- Checking state -->
     <div class="glass-card p-12 sm:p-16 text-center">
-      <div class="inline-flex items-center justify-center w-20 h-20 bg-blue-500/10 rounded-2xl mb-8">
+      <div
+        class="inline-flex items-center justify-center w-20 h-20 bg-blue-500/10 rounded-2xl mb-8"
+      >
         <LoadingSpinner size="large" color="blue" />
       </div>
-      
-      <h3 class="text-2xl font-bold text-white mb-3">
-        Verificando Wallet
-      </h3>
-      
+
+      <h3 class="text-2xl font-bold text-white mb-3">Verificando Wallet</h3>
+
       <p class="text-sm text-slate-400 max-w-md mx-auto">
         Detectando si tienes Pali Wallet instalada en tu navegador...
       </p>
     </div>
-
   {:else if !isWalletInstalled}
     <!-- Wallet not installed -->
     <div class="glass-card p-12 sm:p-16 text-center">
-      <div class="inline-flex items-center justify-center w-20 h-20 bg-red-500/10 rounded-2xl mb-8">
+      <div
+        class="inline-flex items-center justify-center w-20 h-20 bg-red-500/10 rounded-2xl mb-8"
+      >
         <span class="text-4xl">🔒</span>
       </div>
-      
-      <h3 class="text-2xl font-bold text-white mb-3">
-        Wallet no detectada
-      </h3>
-      
+
+      <h3 class="text-2xl font-bold text-white mb-3">Wallet no detectada</h3>
+
       <p class="text-sm text-slate-400 max-w-lg mx-auto mb-8">
-        Para continuar, necesitas instalar PaliWallet en tu navegador. Es una extensión segura que te permite gestionar criptomonedas y activos digitales.
+        Para continuar, necesitas instalar PaliWallet en tu navegador. Es una
+        extensión segura que te permite gestionar criptomonedas y activos
+        digitales.
       </p>
-      
+
       <a
         href={PALI_WALLET_INSTALL_URL}
         target="_blank"
@@ -125,28 +123,33 @@
         Instalar Pali Wallet
       </a>
     </div>
-
   {:else if !isConnected}
     <!-- Wallet installed but not connected -->
     <div class="glass-card p-12 sm:p-16 text-center">
-      <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-8">
+      <div
+        class="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-8"
+      >
         <span class="text-4xl">🔗</span>
       </div>
-      
-      <h3 class="text-2xl font-bold text-white mb-3">
-        Conectar Wallet
-      </h3>
-      
+
+      <h3 class="text-2xl font-bold text-white mb-3">Conectar Wallet</h3>
+
       <p class="text-sm text-slate-400 max-w-lg mx-auto mb-6">
-        Conecta tu billetera para comenzar a usar la aplicación. Podrás ver tu saldo, dirección pública e información de la red blockchain en tiempo real.
+        Conecta tu billetera para comenzar a usar la aplicación. Podrás ver tu
+        saldo, dirección pública e información de la red blockchain en tiempo
+        real.
       </p>
-      
-      {#if walletType !== 'unknown'}
+
+      {#if walletType !== "unknown"}
         <p class="text-xs text-blue-400 mb-8">
-          🔷 {walletType === 'pali' ? 'PaliWallet' : walletType === 'metamask' ? 'MetaMask' : 'Wallet'} detectada
+          🔷 {walletType === "pali"
+            ? "PaliWallet"
+            : walletType === "metamask"
+              ? "MetaMask"
+              : "Wallet"} detectada
         </p>
       {/if}
-      
+
       <button
         type="button"
         onclick={handleConnect}
@@ -162,35 +165,39 @@
         {/if}
       </button>
     </div>
-
   {:else}
     <!-- Wallet connected -->
     <div class="glass-card p-12 sm:p-16 text-center">
-<div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-8 
-bg-gradient-to-br from-indigo-500 via-green-600 to-pink-500 
-shadow-[0_0_25px_rgba(139,92,246,0.6)] 
-animate-[float_3s_ease-in-out_infinite]">
+      <div
+        class="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-8
+               bg-gradient-to-br from-indigo-500 via-green-600 to-pink-500
+               shadow-[0_0_25px_rgba(139,92,246,0.6)]
+               animate-[float_3s_ease-in-out_infinite]"
+      >
+        <span class="text-4xl text-white animate-[pulse_2s_infinite]">🪙</span>
 
-  <span class="text-4xl text-white animate-[pulse_2s_infinite]">🪙</span>
+        <style>
+          @keyframes float {
+            0% {
+              transform: translateY(0px) scale(1);
+            }
+            50% {
+              transform: translateY(-8px) scale(1.05);
+            }
+            100% {
+              transform: translateY(0px) scale(1);
+            }
+          }
+        </style>
+      </div>
 
-  <style>
-    @keyframes float {
-      0% { transform: translateY(0px) scale(1); }
-      50% { transform: translateY(-8px) scale(1.05); }
-      100% { transform: translateY(0px) scale(1); }
-    }
-  </style>
+      <h3 class="text-2xl font-bold text-white mb-3">Wallet Conectada</h3>
 
-</div>
-      
-      <h3 class="text-2xl font-bold text-white mb-3">
-        Wallet Conectada
-      </h3>
-      
       <p class="text-sm text-slate-400 max-w-lg mx-auto mb-8">
-        Tu billetera está conectada y lista. Puedes ver tu saldo y dirección abajo, o enviar transacciones desde la pestaña correspondiente.
+        Tu billetera está conectada y lista. Puedes ver tu saldo y dirección
+        abajo, o enviar transacciones desde la pestaña correspondiente.
       </p>
-      
+
       <button
         type="button"
         onclick={handleDisconnect}

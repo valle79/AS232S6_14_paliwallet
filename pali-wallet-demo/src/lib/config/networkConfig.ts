@@ -83,22 +83,22 @@ export const EVM_NETWORKS: Record<string, NetworkConfig> = {
     blockExplorerUrl: 'https://tanenbaum.io',
     isTestnet: true
   },
-  zksys_pob_devnet: {
-    chainId: 57000,
+  syscoin_tanenbaum: {
+    chainId: 57042,
     name: 'zkSYS PoB Devnet',
     type: 'EVM',
-    rpcUrl: 'https://rpc.ankr.com/rollux_testnet',
+    rpcUrl: 'https://rpc-pob.dev11.top/',
     nativeCurrency: { name: 'Test Syscoin', symbol: 'TSYS', decimals: 18 },
-    blockExplorerUrl: 'https://rollux.tanenbaum.io',
+    blockExplorerUrl: 'https://explorer-pob.dev11.top',
     isTestnet: true
   },
   zksys_tesnet: {
     chainId: 57057,
-    name: 'zkSYS Tesnet',
+    name: 'zkSYS Testnet',
     type: 'EVM',
-    rpcUrl: 'https://rpc.ankr.com/rollux_testnet',
+    rpcUrl: 'https://rpc-zk.tanenbaum.io/',
     nativeCurrency: { name: 'Test Syscoin', symbol: 'TSYS', decimals: 18 },
-    blockExplorerUrl: 'https://rollux.tanenbaum.io',
+    blockExplorerUrl: 'https://explorer-zk.tanenbaum.io',
     isTestnet: true
   },
   // --- Ethereum ---
@@ -113,9 +113,9 @@ export const EVM_NETWORKS: Record<string, NetworkConfig> = {
   },
   ethereum_sepolia: {
     chainId: 11155111,
-    name: 'Ethereum Sepolia',
+    name: 'Sepolia',
     type: 'EVM',
-    rpcUrl: 'https://eth-sepolia.g.alchemy.com/v2/demo',
+    rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com/',
     nativeCurrency: { name: 'Sepolia ETH', symbol: 'ETH', decimals: 18 },
     blockExplorerUrl: 'https://sepolia.etherscan.io',
     isTestnet: true
@@ -127,6 +127,15 @@ export const EVM_NETWORKS: Record<string, NetworkConfig> = {
     rpcUrl: 'https://eth-holesky.g.alchemy.com/v2/demo',
     nativeCurrency: { name: 'Holesky ETH', symbol: 'hETH', decimals: 18 },
     blockExplorerUrl: 'https://holesky.etherscan.io',
+    isTestnet: true
+  },
+  ethereum_hoodi: {
+    chainId: 560048,
+    name: 'Ethereum Hoodi',
+    type: 'EVM',
+    rpcUrl: 'https://0xrpc.io/hoodi',
+    nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
+    blockExplorerUrl: 'https://hoodi.etherscan.io',
     isTestnet: true
   },
   // --- Polygon ---
