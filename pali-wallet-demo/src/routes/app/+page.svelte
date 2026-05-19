@@ -10,6 +10,8 @@
   import Toast from '$lib/components/Toast.svelte';
   import NetworkSwitcher from '$lib/components/NetworkSwitcher.svelte';
   import TransactionForm from '$lib/components/TransactionForm.svelte';
+  import SmartContractForm from '$lib/components/SmartContractForm.svelte';
+  import NetworkManager from '$lib/components/NetworkManager.svelte';
 
   /* ================================
      STATE (Svelte 5 runes)
@@ -26,7 +28,7 @@
   let balanceLoading = $state(false);
   let connectionError = $state('');
   let balanceError = $state('');
-  let activeTab = $state('wallet'); // 'wallet' | 'send'
+  let activeTab = $state('wallet'); // 'wallet' | 'send' | 'contract' | 'networks'
 
   const retryHandler = new RetryHandler(3, 1000);
 
@@ -266,7 +268,7 @@
     {#if walletState.isConnected}
       
       <!-- Tab Navigation -->
-      <div class="flex justify-center gap-2 mb-10">
+      <div class="flex justify-center gap-2 mb-10 flex-wrap">
         <button
           onclick={() => activeTab = 'wallet'}
           class="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 {activeTab === 'wallet' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25' : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50'}"
@@ -278,6 +280,18 @@
           class="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 {activeTab === 'send' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25' : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50'}"
         >
           ⚡ Enviar Transacción
+        </button>
+        <button
+          onclick={() => activeTab = 'contract'}
+          class="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 {activeTab === 'contract' ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/25' : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50'}"
+        >
+          🤖 Smart Contract
+        </button>
+        <button
+          onclick={() => activeTab = 'networks'}
+          class="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 {activeTab === 'networks' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25' : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50'}"
+        >
+          🌐 Gestión de Redes
         </button>
       </div>
 
@@ -382,6 +396,16 @@
         <!-- Transaction Form -->
         <div class="max-w-2xl mx-auto fade-in">
           <TransactionForm isConnected={walletState.isConnected} />
+        </div>
+      {:else if activeTab === 'contract'}
+        <!-- Smart Contract Form -->
+        <div class="max-w-2xl mx-auto fade-in">
+          <SmartContractForm isConnected={walletState.isConnected} />
+        </div>
+      {:else if activeTab === 'networks'}
+        <!-- Network Manager -->
+        <div class="max-w-2xl mx-auto fade-in">
+          <NetworkManager isConnected={walletState.isConnected} />
         </div>
       {/if}
     {/if}

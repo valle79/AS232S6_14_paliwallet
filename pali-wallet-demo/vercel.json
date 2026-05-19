@@ -1,0 +1,12 @@
+{
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "framework": "sveltekit",
+  "outputDirectory": ".svelte-kit",
+  "regions": ["iad1"],
+  "env": {
+    "VITE_DATABASE_URL": "@vite_database_url",
+    "VITE_USE_DATABASE": "@vite_use_database"
+  }
+}

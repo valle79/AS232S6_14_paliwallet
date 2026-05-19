@@ -1,0 +1,10 @@
+# Archivos que Vercel debe ignorar
+node_modules
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+.svelte-kit
+build
+.vercel

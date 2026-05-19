@@ -32,24 +32,16 @@
   let estimatedGas = $state('');
   let totalFee = $state('');
   let recentTransactions = $state<
-    Array<{ hash: string; to: string; value: string; status: string; timestamp: number }>
+    Array<{ hash: string; to: string; value: string; status: string; timestamp: number; chainId?: string; networkName?: string }>
   >([]);
+  let showAllNetworks = $state(false); // 🔥 NUEVO: Toggle para mostrar todas las redes
 
   /* ================================
      LIFECYCLE
   =================================*/
   onMount(async () => {
     // Cargar transacciones del historial
-    const history = transactionService.getTransactionHistory();
-    recentTransactions = history.map(tx => ({
-      hash: tx.hash,
-      to: tx.to,
-      value: tx.value,
-      status: tx.status || 'pending',
-      timestamp: tx.timestamp || Date.now()
-    }));
-    
-    console.log('📋 Transacciones cargadas:', recentTransactions.length);
+    await loadTransactions();
     
     // 🔥 Verificar estado de transacciones pendientes
     if (isConnected && recentTransactions.length > 0) {
@@ -57,9 +49,44 @@
     }
   });
 
+  // 🔥 NUEVO: Efecto reactivo para recargar transacciones cuando cambia el filtro o la conexión
+  $effect(() => {
+    if (isConnected) {
+      loadTransactions();
+    }
+  });
+
   /* ================================
      FUNCTIONS
   =================================*/
+
+  /**
+   * 🔥 NUEVO: Cargar transacciones (con filtro opcional por red)
+   */
+  async function loadTransactions(): Promise<void> {
+    const currentNetwork = walletService.currentNetwork;
+    
+    let history;
+    if (showAllNetworks || !currentNetwork) {
+      // Mostrar todas las transacciones
+      history = await transactionService.getTransactionHistory();
+    } else {
+      // Filtrar por red actual
+      history = await transactionService.getTransactionHistoryByChain(currentNetwork.chainId);
+    }
+    
+    recentTransactions = history.map(tx => ({
+      hash: tx.hash,
+      to: tx.to,
+      value: tx.value,
+      status: tx.status || 'pending',
+      timestamp: tx.timestamp || Date.now(),
+      chainId: tx.chainId,
+      networkName: tx.networkName
+    }));
+    
+    console.log('📋 Transacciones cargadas:', recentTransactions.length, showAllNetworks ? '(todas las redes)' : '(red actual)');
+  }
 
   /**
    * Actualizar estado de transacciones pendientes
@@ -73,22 +100,15 @@
     
     for (const tx of pendingTxs) {
       try {
-        // Actualizar estado en el servicio (esto también actualiza localStorage)
+        // Actualizar estado en el servicio (esto también actualiza localStorage y DB)
         await transactionService.updateTransactionStatus(tx.hash);
-        
-        // Recargar el historial actualizado
-        const history = transactionService.getTransactionHistory();
-        recentTransactions = history.map(t => ({
-          hash: t.hash,
-          to: t.to,
-          value: t.value,
-          status: t.status || 'pending',
-          timestamp: t.timestamp || Date.now()
-        }));
       } catch (error) {
         console.warn(`⚠️ No se pudo verificar transacción ${tx.hash.substring(0, 10)}...`);
       }
     }
+    
+    // Recargar el historial actualizado desde DB
+    await loadTransactions();
   }
   const isFormValid = $derived(
     recipientAddress.trim().length > 0 &&
@@ -204,16 +224,8 @@
       transactionStatus = 'pending';
       showHashDisplay = true;
 
-      recentTransactions = [
-        {
-          hash,
-          to: recipientAddress,
-          value: amount,
-          status: 'pending',
-          timestamp: Date.now()
-        },
-        ...recentTransactions
-      ].slice(0, 10); // Keep last 10
+      // 🔥 Recargar transacciones desde DB inmediatamente
+      await loadTransactions();
 
       showSuccess(`Transacción enviada: ${hash.substring(0, 10)}...`);
       resetForm();
@@ -246,9 +258,8 @@
       if (receipt) {
         transactionStatus = receipt.status === 1 ? 'success' : 'failed';
 
-        recentTransactions = recentTransactions.map(tx =>
-          tx.hash === hash ? { ...tx, status: transactionStatus } : tx
-        );
+        // 🔥 Recargar desde DB para obtener el estado actualizado
+        await loadTransactions();
 
         if (transactionStatus === 'success') {
           showSuccess('✅ Transacción confirmada exitosamente');
@@ -507,7 +518,31 @@
     <!-- Recent Transactions -->
     {#if recentTransactions.length > 0}
       <div class="mt-8 pt-6 border-t border-slate-700/30">
-        <h3 class="font-bold text-white text-sm mb-4">📋 Historial de Transacciones</h3>
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="font-bold text-white text-sm">📋 Historial de Transacciones</h3>
+          
+          <div class="flex gap-2">
+            <!-- 🔥 NUEVO: Botón para actualizar estados -->
+            <button
+              type="button"
+              onclick={async () => await updatePendingTransactions()}
+              class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 text-slate-300 hover:bg-slate-600 transition-colors"
+              title="Actualizar estados de transacciones pendientes"
+            >
+              🔄 Actualizar
+            </button>
+            
+            <!-- 🔥 Toggle para filtrar por red -->
+            <button
+              type="button"
+              onclick={async () => { showAllNetworks = !showAllNetworks; await loadTransactions(); }}
+              class="text-xs px-3 py-1.5 rounded-lg {showAllNetworks ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'} hover:opacity-80 transition-opacity"
+            >
+              {showAllNetworks ? '🌐 Todas las redes' : '🔗 Red actual'}
+            </button>
+          </div>
+        </div>
+        
         <div class="space-y-2 max-h-48 overflow-y-auto">
           {#each recentTransactions as tx (tx.hash)}
             <div class="p-3 bg-slate-800/30 rounded-xl border border-slate-700/20 text-sm">
@@ -532,9 +567,16 @@
                       : '⏳ Pendiente'}
                 </span>
               </div>
-              <div class="text-xs text-slate-500">
-                {tx.value} ETH → {tx.to.substring(0, 8)}...{tx.to.substring(tx.to.length - 4)}
+              <div class="text-xs text-slate-500 mb-1">
+                {tx.value} {currentCurrency()} → {tx.to.substring(0, 8)}...{tx.to.substring(tx.to.length - 4)}
               </div>
+              <!-- 🔥 NUEVO: Mostrar red si está en modo "todas las redes" -->
+              {#if showAllNetworks && tx.networkName}
+                <div class="text-xs text-slate-600 flex items-center gap-1">
+                  <span>🌐</span>
+                  <span>{tx.networkName}</span>
+                </div>
+              {/if}
             </div>
           {/each}
         </div>

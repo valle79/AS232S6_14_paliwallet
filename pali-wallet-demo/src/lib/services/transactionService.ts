@@ -5,6 +5,7 @@
  */
 
 import { ethers } from 'ethers';
+import { databaseService } from './databaseService';
 
 export interface Transaction {
   hash: string;
@@ -19,6 +20,8 @@ export interface Transaction {
   status?: 'pending' | 'success' | 'failed';
   timestamp?: number;
   blockNumber?: number;
+  chainId?: string; // 🔥 NUEVO: Para filtrar por red
+  networkName?: string; // 🔥 NUEVO: Nombre de la red
 }
 
 export interface TransactionReceipt {
@@ -49,19 +52,53 @@ export class TransactionService {
   private signer: ethers.JsonRpcSigner | null = null;
   private transactionHistory: Map<string, Transaction> = new Map();
   private readonly STORAGE_KEY = 'pali_wallet_transactions';
+  private isInitialized = false;
 
   constructor() {
-    this.loadTransactionsFromStorage();
+    // Cargar transacciones de forma asíncrona
+    this.initialize();
   }
 
   /**
-   * Cargar transacciones desde localStorage
+   * Inicializar servicio y cargar transacciones
    */
-  private loadTransactionsFromStorage(): void {
+  private async initialize(): Promise<void> {
+    await this.loadTransactionsFromStorage();
+    this.isInitialized = true;
+  }
+
+  /**
+   * Esperar a que el servicio esté inicializado
+   */
+  async waitForInitialization(): Promise<void> {
+    if (this.isInitialized) return;
+    
+    // Esperar hasta que se inicialice (máximo 5 segundos)
+    const startTime = Date.now();
+    while (!this.isInitialized && Date.now() - startTime < 5000) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+
+  /**
+   * Cargar transacciones desde localStorage o DB
+   */
+  private async loadTransactionsFromStorage(): Promise<void> {
     // Solo ejecutar en el navegador (no en SSR)
     if (typeof window === 'undefined') return;
     
     try {
+      // 🔥 Intentar cargar desde Neon DB primero
+      if (databaseService.isUsingDatabase()) {
+        const dbTransactions = await databaseService.getAllTransactions();
+        if (dbTransactions.length > 0) {
+          this.transactionHistory = new Map(dbTransactions.map(tx => [tx.hash, tx]));
+          console.log('📦 Transacciones cargadas desde Neon DB:', this.transactionHistory.size);
+          return;
+        }
+      }
+      
+      // Fallback a localStorage
       const stored = localStorage.getItem(this.STORAGE_KEY);
       if (stored) {
         const transactions = JSON.parse(stored);
@@ -74,16 +111,25 @@ export class TransactionService {
   }
 
   /**
-   * Guardar transacciones en localStorage
+   * Guardar transacciones en localStorage y/o DB
    */
-  private saveTransactionsToStorage(): void {
+  private async saveTransactionsToStorage(): Promise<void> {
     // Solo ejecutar en el navegador (no en SSR)
     if (typeof window === 'undefined') return;
     
     try {
+      // Guardar en localStorage siempre (como backup)
       const transactions = Object.fromEntries(this.transactionHistory);
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(transactions));
       console.log('💾 Transacciones guardadas en localStorage');
+      
+      // 🔥 Guardar en Neon DB si está disponible
+      if (databaseService.isUsingDatabase()) {
+        const allTransactions = Array.from(this.transactionHistory.values());
+        for (const tx of allTransactions) {
+          await databaseService.saveTransaction(tx);
+        }
+      }
     } catch (error) {
       console.error('Error al guardar transacciones:', error);
     }
@@ -222,6 +268,11 @@ export class TransactionService {
       
       console.log('✅ Transacción enviada. Hash:', tx.hash);
       
+      // 🔥 Obtener chainId y nombre de red
+      const network = await this.provider!.getNetwork();
+      const chainId = network.chainId.toString();
+      const networkName = network.name !== 'unknown' ? network.name : `Chain ${chainId}`;
+      
       // Guardar en historial
       this.transactionHistory.set(tx.hash, {
         hash: tx.hash,
@@ -232,11 +283,15 @@ export class TransactionService {
         gasPrice: tx.gasPrice?.toString(),
         confirmations: 0,
         status: 'pending',
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        chainId, // 🔥 NUEVO
+        networkName // 🔥 NUEVO
       });
 
-      // Guardar en localStorage
-      this.saveTransactionsToStorage();
+      // Guardar en localStorage y DB (async, no bloqueante)
+      this.saveTransactionsToStorage().catch(err => 
+        console.error('Error al guardar transacción:', err)
+      );
 
       return tx.hash;
     } catch (error: any) {
@@ -273,6 +328,16 @@ export class TransactionService {
 
       const receipt = await this.provider.getTransactionReceipt(hash);
 
+      // 🔥 Obtener confirmaciones de forma segura
+      let confirmations: number = 0;
+      if (receipt?.confirmations) {
+        if (typeof receipt.confirmations === 'function') {
+          confirmations = await (receipt.confirmations as unknown as () => Promise<number>)();
+        } else {
+          confirmations = receipt.confirmations as unknown as number;
+        }
+      }
+
       return {
         hash: tx.hash,
         from: tx.from || '',
@@ -282,7 +347,7 @@ export class TransactionService {
         gasLimit: tx.gasLimit?.toString(),
         data: tx.data,
         nonce: tx.nonce,
-        confirmations: receipt?.confirmations || 0,
+        confirmations,
         status: receipt?.status === 1 ? 'success' : 'failed',
         blockNumber: receipt?.blockNumber
       };
@@ -305,11 +370,34 @@ export class TransactionService {
       if (receipt && this.transactionHistory.has(hash)) {
         const tx = this.transactionHistory.get(hash)!;
         tx.status = receipt.status === 1 ? 'success' : 'failed';
-        tx.confirmations = receipt.confirmations || 0;
+        
+        // 🔥 Obtener confirmaciones de forma segura
+        let txConfirmations: number = 0;
+        if (receipt.confirmations) {
+          if (typeof receipt.confirmations === 'function') {
+            txConfirmations = await (receipt.confirmations as unknown as () => Promise<number>)();
+          } else {
+            txConfirmations = receipt.confirmations as unknown as number;
+          }
+        }
+        
+        tx.confirmations = txConfirmations;
         this.transactionHistory.set(hash, tx);
         
-        // Guardar en localStorage
-        this.saveTransactionsToStorage();
+        // Guardar en localStorage y DB (async, no bloqueante)
+        this.saveTransactionsToStorage().catch(err => 
+          console.error('Error al guardar transacción:', err)
+        );
+        
+        // 🔥 También actualizar en DB directamente
+        if (databaseService.isUsingDatabase()) {
+          databaseService.updateTransactionStatus(
+            hash,
+            tx.status,
+            txConfirmations,
+            receipt.blockNumber
+          ).catch(err => console.error('Error al actualizar en DB:', err));
+        }
       }
       
       return receipt as unknown as TransactionReceipt;
@@ -323,44 +411,127 @@ export class TransactionService {
    * Actualizar estado de una transacción específica
    */
   async updateTransactionStatus(hash: string): Promise<void> {
-    if (!this.provider) return;
+    if (!this.provider) {
+      console.warn('⚠️ Provider no disponible para actualizar transacción');
+      return;
+    }
 
     try {
+      console.log(`🔍 Verificando estado de transacción: ${hash.substring(0, 10)}...`);
+      
       const receipt = await this.provider.getTransactionReceipt(hash);
       
-      if (receipt && this.transactionHistory.has(hash)) {
-        const tx = this.transactionHistory.get(hash)!;
-        tx.status = receipt.status === 1 ? 'success' : 'failed';
-        tx.confirmations = receipt.confirmations || 0;
-        this.transactionHistory.set(hash, tx);
+      if (receipt) {
+        const newStatus = receipt.status === 1 ? 'success' : 'failed';
         
-        // Guardar en localStorage
-        this.saveTransactionsToStorage();
+        // 🔥 Obtener confirmaciones de forma segura
+        let confirmations: number = 0;
+        if (receipt.confirmations) {
+          if (typeof receipt.confirmations === 'function') {
+            confirmations = await (receipt.confirmations as unknown as () => Promise<number>)();
+          } else {
+            confirmations = receipt.confirmations as unknown as number;
+          }
+        }
         
-        console.log(`✅ Estado de transacción ${hash.substring(0, 10)}... actualizado a: ${tx.status}`);
+        if (this.transactionHistory.has(hash)) {
+          const tx = this.transactionHistory.get(hash)!;
+          
+          // Solo actualizar si el estado cambió
+          if (tx.status !== newStatus || tx.confirmations !== confirmations) {
+            tx.status = newStatus;
+            tx.confirmations = confirmations;
+            tx.blockNumber = receipt.blockNumber;
+            this.transactionHistory.set(hash, tx);
+            
+            // Guardar en localStorage y DB
+            await this.saveTransactionsToStorage();
+            
+            // 🔥 También actualizar en DB directamente
+            if (databaseService.isUsingDatabase()) {
+              await databaseService.updateTransactionStatus(
+                hash,
+                newStatus,
+                confirmations,
+                receipt.blockNumber
+              );
+            }
+            
+            console.log(`✅ Estado actualizado: ${hash.substring(0, 10)}... → ${newStatus} (${confirmations} confirmaciones)`);
+          } else {
+            console.log(`ℹ️ Estado sin cambios: ${hash.substring(0, 10)}... → ${newStatus}`);
+          }
+        } else {
+          console.warn(`⚠️ Transacción ${hash.substring(0, 10)}... no encontrada en historial local`);
+        }
+      } else {
+        console.log(`⏳ Transacción ${hash.substring(0, 10)}... aún no confirmada en blockchain`);
       }
     } catch (error) {
-      console.error('Error al actualizar estado de transacción:', error);
+      console.error(`❌ Error al actualizar estado de transacción ${hash.substring(0, 10)}...:`, error);
     }
   }
 
   /**
    * Obtener historial de transacciones locales
    */
-  getTransactionHistory(): Transaction[] {
+  async getTransactionHistory(): Promise<Transaction[]> {
+    // 🔥 Si usa DB, cargar desde allí en tiempo real
+    if (databaseService.isUsingDatabase()) {
+      try {
+        const dbTransactions = await databaseService.getAllTransactions();
+        if (dbTransactions.length > 0) {
+          // Actualizar caché local
+          this.transactionHistory = new Map(dbTransactions.map(tx => [tx.hash, tx]));
+          return dbTransactions;
+        }
+      } catch (error) {
+        console.error('Error al cargar desde DB, usando caché local:', error);
+      }
+    }
+    
+    // Fallback a caché local
     return Array.from(this.transactionHistory.values())
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+  }
+
+  /**
+   * 🔥 NUEVO: Obtener historial filtrado por red
+   */
+  async getTransactionHistoryByChain(chainId: string): Promise<Transaction[]> {
+    // 🔥 Si usa DB, cargar desde allí en tiempo real
+    if (databaseService.isUsingDatabase()) {
+      try {
+        const dbTransactions = await databaseService.getTransactionsByChain(chainId);
+        if (dbTransactions.length > 0) {
+          return dbTransactions;
+        }
+      } catch (error) {
+        console.error('Error al cargar desde DB, usando caché local:', error);
+      }
+    }
+    
+    // Fallback a caché local
+    return Array.from(this.transactionHistory.values())
+      .filter(tx => tx.chainId === chainId)
       .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
   }
 
   /**
    * Limpiar historial de transacciones
    */
-  clearTransactionHistory(): void {
+  async clearTransactionHistory(): Promise<void> {
     this.transactionHistory.clear();
     
     // Solo ejecutar en el navegador (no en SSR)
     if (typeof window !== 'undefined') {
       localStorage.removeItem(this.STORAGE_KEY);
+      
+      // 🔥 También limpiar en DB
+      if (databaseService.isUsingDatabase()) {
+        await databaseService.clearAllTransactions();
+      }
+      
       console.log('🗑️ Historial de transacciones limpiado');
     }
   }
