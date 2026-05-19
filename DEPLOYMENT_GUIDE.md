@@ -111,7 +111,7 @@ Responde las preguntas:
 - **Directory?** → ./ (presiona Enter)
 - **Override settings?** → No
 
-#### Paso 4: Agregar Variables de Entorno
+#### Paso 4: Agregar Variables de Entorno okokokokoko
 
 ```bash
 # Agregar DATABASE_URL
