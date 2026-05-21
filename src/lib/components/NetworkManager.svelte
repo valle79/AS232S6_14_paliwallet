@@ -173,15 +173,22 @@
     }
 
     try {
+      // Crear objeto limpio sin referencias circulares
+      const params = {
+        chainId: `0x${network.chainId.toString(16)}`,
+        chainName: network.name,
+        nativeCurrency: {
+          name: network.nativeCurrency.name,
+          symbol: network.nativeCurrency.symbol,
+          decimals: network.nativeCurrency.decimals
+        },
+        rpcUrls: network.rpcUrl ? [network.rpcUrl] : [],
+        blockExplorerUrls: network.blockExplorerUrl ? [network.blockExplorerUrl] : []
+      };
+
       await window.ethereum.request({
         method: 'wallet_addEthereumChain',
-        params: [{
-          chainId: `0x${network.chainId.toString(16)}`,
-          chainName: network.name,
-          nativeCurrency: network.nativeCurrency,
-          rpcUrls: [network.rpcUrl],
-          blockExplorerUrls: network.blockExplorerUrl ? [network.blockExplorerUrl] : undefined
-        }]
+        params: [params]
       });
 
       showSuccess(`✅ Red "${network.name}" añadida a PaliWallet`);
