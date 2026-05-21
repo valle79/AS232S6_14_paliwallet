@@ -5,6 +5,7 @@
    * Permite añadir y eliminar redes de prueba
    */
 
+  import { onMount } from 'svelte';
   import { showError, showSuccess, showInfo } from '../utils/notifications';
   import type { NetworkConfig } from '../config/networkConfig';
 
@@ -20,11 +21,11 @@
   let showAddForm = $state(false);
   
   // Form fields
-  let networkName = $state('');
-  let chainId = $state('');
-  let rpcUrl = $state('');
-  let currencySymbol = $state('');
-  let explorerUrl = $state('');
+  let networkName = $state<string>('');
+  let chainId = $state<string>('');
+  let rpcUrl = $state<string>('');
+  let currencySymbol = $state<string>('');
+  let explorerUrl = $state<string>('');
 
   /* ================================
      STORAGE KEY
@@ -34,7 +35,7 @@
   /* ================================
      LIFECYCLE
   =================================*/
-  $effect(() => {
+  onMount(() => {
     loadCustomNetworks();
   });
 
@@ -77,29 +78,34 @@
    * Añadir nueva red personalizada
    */
   function addCustomNetwork(): void {
-    // Validaciones
-    if (!networkName.trim()) {
+    // Validaciones - Convertir a string y validar
+    const name = String(networkName || '').trim();
+    const chain = String(chainId || '').trim();
+    const rpc = String(rpcUrl || '').trim();
+    const symbol = String(currencySymbol || '').trim();
+    
+    if (!name) {
       showError('Ingresa un nombre para la red');
       return;
     }
 
-    if (!chainId.trim() || isNaN(parseInt(chainId))) {
+    if (!chain || isNaN(parseInt(chain))) {
       showError('Chain ID debe ser un número válido');
       return;
     }
 
-    if (!rpcUrl.trim() || !rpcUrl.startsWith('http')) {
+    if (!rpc || !rpc.startsWith('http')) {
       showError('RPC URL debe ser una URL válida (http/https)');
       return;
     }
 
-    if (!currencySymbol.trim()) {
+    if (!symbol) {
       showError('Ingresa el símbolo de la moneda');
       return;
     }
 
     // Verificar si ya existe una red con ese chainId
-    const exists = customNetworks.some(net => net.chainId.toString() === chainId);
+    const exists = customNetworks.some(net => net.chainId.toString() === chain);
     if (exists) {
       showError('Ya existe una red con ese Chain ID');
       return;
@@ -107,13 +113,13 @@
 
     // Crear nueva red
     const newNetwork: NetworkConfig = {
-      chainId: parseInt(chainId),
-      name: networkName,
+      chainId: parseInt(chain),
+      name: name,
       type: 'EVM',
-      rpcUrl: rpcUrl,
+      rpcUrl: rpc,
       nativeCurrency: {
-        name: currencySymbol,
-        symbol: currencySymbol,
+        name: symbol,
+        symbol: symbol,
         decimals: 18
       },
       blockExplorerUrl: explorerUrl || undefined,
@@ -125,7 +131,7 @@
     customNetworks = [...customNetworks, newNetwork];
     saveCustomNetworks();
 
-    showSuccess(`✅ Red "${networkName}" añadida correctamente`);
+    showSuccess(`✅ Red "${name}" añadida correctamente`);
 
     // Resetear formulario
     resetForm();
@@ -241,7 +247,7 @@
             <input
               id="chain-id"
               bind:value={chainId}
-              type="number"
+              type="text"
               placeholder="Ej: 12345"
               class="w-full px-4 py-2.5 border border-slate-700/50 rounded-lg bg-slate-800/40 text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 text-sm"
             />
