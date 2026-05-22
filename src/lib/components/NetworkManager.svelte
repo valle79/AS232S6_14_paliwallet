@@ -7,6 +7,7 @@
 
   import { onMount } from 'svelte';
   import { showError, showSuccess, showInfo } from '../utils/notifications';
+  import { walletService } from '../services/walletService';
   import type { NetworkConfig } from '../config/networkConfig';
 
   /* ================================
@@ -313,80 +314,185 @@
   function isPresetNetworkAdded(chainId: number): boolean {
     return customNetworks.some(net => net.chainId === chainId);
   }
+
+  /**
+   * 🔥 NUEVO: Cambiar a una red específica
+   */
+  async function switchToNetwork(network: NetworkConfig): Promise<void> {
+    if (!isConnected) {
+      showError('Debes conectar tu wallet primero');
+      return;
+    }
+
+    if (typeof window === 'undefined' || !window.ethereum) {
+      showError('PaliWallet no está disponible');
+      return;
+    }
+
+    try {
+      const chainIdHex = `0x${network.chainId.toString(16)}`;
+
+      // Intentar cambiar de red
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: chainIdHex }]
+        });
+
+        showSuccess(`✅ Cambiado a ${network.name}`);
+      } catch (error: any) {
+        // Si la red no existe (error 4902), agregarla automáticamente
+        if (error.code === 4902) {
+          const params = {
+            chainId: chainIdHex,
+            chainName: network.name,
+            nativeCurrency: {
+              name: network.nativeCurrency.name,
+              symbol: network.nativeCurrency.symbol,
+              decimals: network.nativeCurrency.decimals
+            },
+            rpcUrls: network.rpcUrl ? [network.rpcUrl] : [],
+            blockExplorerUrls: network.blockExplorerUrl ? [network.blockExplorerUrl] : []
+          };
+
+          await window.ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [params]
+          });
+
+          showSuccess(`✅ Red ${network.name} agregada y activada`);
+        } else {
+          throw error;
+        }
+      }
+    } catch (error: any) {
+      console.error('Error al cambiar de red:', error);
+      
+      if (error.code === 4001) {
+        showError('Operación rechazada por el usuario');
+      } else {
+        showError(`No se pudo cambiar a ${network.name}`);
+      }
+    }
+  }
+
+  /**
+   * 🔥 NUEVO: Verificar si estamos en una red específica
+   */
+  function isCurrentNetwork(chainId: number): boolean {
+    const currentChainId = walletService.currentNetwork?.chainId;
+    return currentChainId ? currentChainId.toString() === chainId.toString() : false;
+  }
+
 </script>
 
-<div class="w-full space-y-6">
-  <!-- 🔥 NUEVO: Redes Precargadas -->
-  <div class="glass-card p-8">
-    <div class="mb-6">
-      <h2 class="text-xl font-bold text-white mb-1 flex items-center gap-2">
-        <span>⚡</span> Redes Precargadas
-      </h2>
-      <p class="text-sm text-slate-400">
-        Añade redes de prueba populares con un solo click
-      </p>
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {#each PRESET_NETWORKS as network (network.chainId)}
-        {@const isAdded = isPresetNetworkAdded(network.chainId)}
-        <div class="bg-slate-800/40 border border-slate-700/50 rounded-xl p-5 hover:border-slate-600/50 transition-all">
-          <div class="flex items-start justify-between mb-3">
-            <div class="flex-1">
-              <h4 class="text-white font-bold text-base mb-1">{network.name}</h4>
-              <p class="text-slate-400 text-xs">Chain ID: {network.chainId}</p>
-            </div>
-            <span class="px-2 py-1 bg-blue-500/10 text-blue-400 text-xs font-semibold rounded">
-              {network.nativeCurrency.symbol}
-            </span>
-          </div>
-
-          <div class="space-y-1.5 mb-4">
-            <div class="flex items-center gap-2 text-xs">
-              <span class="text-slate-500 w-14">RPC:</span>
-              <code class="flex-1 text-slate-300 font-mono truncate text-[10px]">{network.rpcUrl}</code>
-            </div>
-            {#if network.blockExplorerUrl}
-              <div class="flex items-center gap-2 text-xs">
-                <span class="text-slate-500 w-14">Explorer:</span>
-                <code class="flex-1 text-slate-300 font-mono truncate text-[10px]">{network.blockExplorerUrl}</code>
-              </div>
-            {/if}
-          </div>
-
-          {#if isAdded}
-            <div class="flex gap-2">
-              <button
-                type="button"
-                onclick={() => addNetworkToWallet(network)}
-                class="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition"
-              >
-                ➕ Añadir a Wallet
-              </button>
-              <button
-                type="button"
-                onclick={() => removeCustomNetwork(network.chainId)}
-                class="px-3 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded-lg transition"
-              >
-                🗑️
-              </button>
-            </div>
-          {:else}
-            <button
-              type="button"
-              onclick={() => addPresetNetwork(network)}
-              class="w-full px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition"
-            >
-              ✓ Añadir a Mi Lista
-            </button>
-          {/if}
-        </div>
-      {/each}
-    </div>
+<div class="w-full">
+  <!-- Header General -->
+  <div class="mb-6">
+    <h2 class="text-2xl font-bold text-white mb-2 flex items-center gap-2">
+      <span>🌐</span> Gestión de Redes Blockchain
+    </h2>
+    <p class="text-sm text-slate-400">
+      Añade, elimina y cambia entre redes de prueba
+    </p>
   </div>
 
-  <!-- Card de Redes Personalizadas -->
-  <div class="glass-card p-8">
+  <!-- Layout de 2 columnas -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    
+    <!-- COLUMNA IZQUIERDA: Redes Precargadas -->
+    <div class="glass-card p-6">
+      <div class="mb-6">
+        <h3 class="text-lg font-bold text-white mb-1 flex items-center gap-2">
+          <span>⚡</span> Redes Precargadas
+        </h3>
+        <p class="text-xs text-slate-400">
+          Añade y conecta a redes populares con un click
+        </p>
+      </div>
+
+      <div class="space-y-3 max-h-[600px] overflow-y-auto pr-2">
+        {#each PRESET_NETWORKS as network (network.chainId)}
+          {@const isAdded = isPresetNetworkAdded(network.chainId)}
+          {@const isCurrent = isCurrentNetwork(network.chainId)}
+          
+          <div class="bg-slate-800/40 border rounded-xl p-4 transition-all {isCurrent ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-slate-700/50 hover:border-slate-600/50'}">
+            <div class="flex items-start justify-between mb-3">
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <h4 class="text-white font-bold text-sm">{network.name}</h4>
+                  {#if isCurrent}
+                    <span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-[10px] font-bold rounded">
+                      ✓ ACTIVA
+                    </span>
+                  {/if}
+                </div>
+                <p class="text-slate-400 text-[11px]">Chain ID: {network.chainId}</p>
+              </div>
+              <span class="px-2 py-1 bg-blue-500/10 text-blue-400 text-[10px] font-semibold rounded">
+                {network.nativeCurrency.symbol}
+              </span>
+            </div>
+
+            <div class="space-y-1 mb-3">
+              <div class="flex items-center gap-2 text-[10px]">
+                <span class="text-slate-500 w-12">RPC:</span>
+                <code class="flex-1 text-slate-300 font-mono truncate">{network.rpcUrl}</code>
+              </div>
+              {#if network.blockExplorerUrl}
+                <div class="flex items-center gap-2 text-[10px]">
+                  <span class="text-slate-500 w-12">Explorer:</span>
+                  <code class="flex-1 text-slate-300 font-mono truncate">{network.blockExplorerUrl}</code>
+                </div>
+              {/if}
+            </div>
+
+            <div class="flex gap-2">
+              {#if !isAdded}
+                <button
+                  type="button"
+                  onclick={() => addPresetNetwork(network)}
+                  class="flex-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold rounded-lg transition"
+                >
+                  ✓ Añadir a Mi Lista
+                </button>
+              {:else if isCurrent}
+                <button
+                  type="button"
+                  disabled
+                  class="flex-1 px-3 py-2 bg-emerald-600/50 text-white text-[11px] font-semibold rounded-lg cursor-not-allowed"
+                >
+                  ✓ Red Activa
+                </button>
+              {:else}
+                <button
+                  type="button"
+                  onclick={() => switchToNetwork(network)}
+                  disabled={!isConnected}
+                  class="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-semibold rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  � Cambiar a Esta Red
+                </button>
+              {/if}
+              
+              {#if isAdded}
+                <button
+                  type="button"
+                  onclick={() => removeCustomNetwork(network.chainId)}
+                  class="px-3 py-2 bg-red-600 hover:bg-red-500 text-white text-[11px] font-semibold rounded-lg transition"
+                  title="Eliminar de mi lista"
+                >
+                  🗑️
+                </button>
+              {/if}
+            </div>
+          </div>
+        {/each}
+      </div>
+    </div>
+
+    <!-- COLUMNA DERECHA: Gestión de Redes Personalizadas -->
+    <div class="glass-card p-6">
     <!-- Header -->
     <div class="mb-8">
       <h2 class="text-xl font-bold text-white mb-1 flex items-center gap-2">
@@ -549,5 +655,6 @@
         </p>
       </div>
     {/if}
+    </div>
   </div>
 </div>
