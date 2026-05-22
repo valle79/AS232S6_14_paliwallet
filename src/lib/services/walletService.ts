@@ -110,13 +110,35 @@ export class WalletService {
     console.log('🔧 Inicializando provider...');
     console.log('Chain type:', this.ethereum.chainType);
 
+    // Para PaliWallet en modo Syscoin, crear provider sin validación inicial
+    if (this.ethereum.chainType === 'syscoin') {
+      console.log('🔗 Modo Syscoin detectado, creando provider directo...');
+      this.provider = new ethers.BrowserProvider(this.ethereum);
+      console.log('✅ Provider creado para Syscoin');
+      return;
+    }
+
     this.provider = new ethers.BrowserProvider(this.ethereum);
 
     try {
-      const network = await this.provider.getNetwork();
+      // Agregar timeout de 5 segundos para getNetwork
+      const networkPromise = Promise.race([
+        this.provider.getNetwork(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('NETWORK_FETCH_TIMEOUT')), 5000)
+        )
+      ]);
+
+      const network = await networkPromise;
       console.log('✅ Provider inicializado correctamente. Network:', network);
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error al inicializar provider:', error);
+      
+      // Si es timeout, continuar de todos modos (el provider está creado)
+      if (error.message === 'NETWORK_FETCH_TIMEOUT') {
+        console.warn('⚠️ Timeout al obtener red, pero provider creado. Continuando...');
+        return;
+      }
       
       // Si falla, podría ser que esté en modo UTXO puro (Bitcoin/Litecoin)
       if (this.ethereum.chainType === 'bitcoin' || this.ethereum.chainType === 'litecoin') {

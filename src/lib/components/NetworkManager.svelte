@@ -33,6 +33,92 @@
   const STORAGE_KEY = 'pali_wallet_custom_networks';
 
   /* ================================
+     REDES PRECARGADAS
+  =================================*/
+  const PRESET_NETWORKS: NetworkConfig[] = [
+    {
+      chainId: 57042,
+      name: 'zkSYS PoB Devnet',
+      type: 'EVM',
+      rpcUrl: 'https://rpc-pob.dev11.top/',
+      nativeCurrency: { name: 'Test Syscoin', symbol: 'TSYS', decimals: 18 },
+      blockExplorerUrl: 'https://explorer-pob.dev11.top',
+      isTestnet: true,
+      isCustom: true
+    },
+    {
+      chainId: 57057,
+      name: 'zkSYS Testnet',
+      type: 'EVM',
+      rpcUrl: 'https://rpc-zk.tanenbaum.io/',
+      nativeCurrency: { name: 'Test Syscoin', symbol: 'TSYS', decimals: 18 },
+      blockExplorerUrl: 'https://explorer-zk.tanenbaum.io',
+      isTestnet: true,
+      isCustom: true
+    },
+    {
+      chainId: 560048,
+      name: 'Ethereum Hoodi',
+      type: 'EVM',
+      rpcUrl: 'https://0xrpc.io/hoodi',
+      nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
+      blockExplorerUrl: 'https://hoodi.etherscan.io',
+      isTestnet: true,
+      isCustom: true
+    },
+    {
+      chainId: 11155111,
+      name: 'Sepolia',
+      type: 'EVM',
+      rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com/',
+      nativeCurrency: { name: 'Sepolia ETH', symbol: 'ETH', decimals: 18 },
+      blockExplorerUrl: 'https://sepolia.etherscan.io',
+      isTestnet: true,
+      isCustom: true
+    },
+    {
+      chainId: 17000,
+      name: 'Ethereum Holesky',
+      type: 'EVM',
+      rpcUrl: 'https://eth-holesky.g.alchemy.com/v2/demo',
+      nativeCurrency: { name: 'Holesky ETH', symbol: 'hETH', decimals: 18 },
+      blockExplorerUrl: 'https://holesky.etherscan.io',
+      isTestnet: true,
+      isCustom: true
+    },
+    {
+      chainId: 80002,
+      name: 'Polygon Amoy',
+      type: 'EVM',
+      rpcUrl: 'https://rpc-amoy.polygon.technology',
+      nativeCurrency: { name: 'Amoy MATIC', symbol: 'MATIC', decimals: 18 },
+      blockExplorerUrl: 'https://amoy.polygonscan.com',
+      isTestnet: true,
+      isCustom: true
+    },
+    {
+      chainId: 84532,
+      name: 'Base Sepolia',
+      type: 'EVM',
+      rpcUrl: 'https://sepolia.base.org',
+      nativeCurrency: { name: 'Sepolia ETH', symbol: 'ETH', decimals: 18 },
+      blockExplorerUrl: 'https://sepolia.basescan.org',
+      isTestnet: true,
+      isCustom: true
+    },
+    {
+      chainId: 421614,
+      name: 'Arbitrum Sepolia',
+      type: 'EVM',
+      rpcUrl: 'https://sepolia-rollup.arbitrum.io/rpc',
+      nativeCurrency: { name: 'Sepolia ETH', symbol: 'ETH', decimals: 18 },
+      blockExplorerUrl: 'https://sepolia.arbiscan.io',
+      isTestnet: true,
+      isCustom: true
+    }
+  ];
+
+  /* ================================
      LIFECYCLE
   =================================*/
   onMount(() => {
@@ -202,10 +288,104 @@
       }
     }
   }
+
+  /**
+   * 🔥 NUEVO: Añadir red precargada con un click
+   */
+  function addPresetNetwork(network: NetworkConfig): void {
+    // Verificar si ya existe
+    const exists = customNetworks.some(net => net.chainId === network.chainId);
+    if (exists) {
+      showError(`La red "${network.name}" ya está añadida`);
+      return;
+    }
+
+    // Añadir a la lista
+    customNetworks = [...customNetworks, network];
+    saveCustomNetworks();
+
+    showSuccess(`✅ Red "${network.name}" añadida a tu lista`);
+  }
+
+  /**
+   * 🔥 NUEVO: Verificar si una red precargada ya está añadida
+   */
+  function isPresetNetworkAdded(chainId: number): boolean {
+    return customNetworks.some(net => net.chainId === chainId);
+  }
 </script>
 
-<div class="w-full">
-  <!-- Card Principal -->
+<div class="w-full space-y-6">
+  <!-- 🔥 NUEVO: Redes Precargadas -->
+  <div class="glass-card p-8">
+    <div class="mb-6">
+      <h2 class="text-xl font-bold text-white mb-1 flex items-center gap-2">
+        <span>⚡</span> Redes Precargadas
+      </h2>
+      <p class="text-sm text-slate-400">
+        Añade redes de prueba populares con un solo click
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {#each PRESET_NETWORKS as network (network.chainId)}
+        {@const isAdded = isPresetNetworkAdded(network.chainId)}
+        <div class="bg-slate-800/40 border border-slate-700/50 rounded-xl p-5 hover:border-slate-600/50 transition-all">
+          <div class="flex items-start justify-between mb-3">
+            <div class="flex-1">
+              <h4 class="text-white font-bold text-base mb-1">{network.name}</h4>
+              <p class="text-slate-400 text-xs">Chain ID: {network.chainId}</p>
+            </div>
+            <span class="px-2 py-1 bg-blue-500/10 text-blue-400 text-xs font-semibold rounded">
+              {network.nativeCurrency.symbol}
+            </span>
+          </div>
+
+          <div class="space-y-1.5 mb-4">
+            <div class="flex items-center gap-2 text-xs">
+              <span class="text-slate-500 w-14">RPC:</span>
+              <code class="flex-1 text-slate-300 font-mono truncate text-[10px]">{network.rpcUrl}</code>
+            </div>
+            {#if network.blockExplorerUrl}
+              <div class="flex items-center gap-2 text-xs">
+                <span class="text-slate-500 w-14">Explorer:</span>
+                <code class="flex-1 text-slate-300 font-mono truncate text-[10px]">{network.blockExplorerUrl}</code>
+              </div>
+            {/if}
+          </div>
+
+          {#if isAdded}
+            <div class="flex gap-2">
+              <button
+                type="button"
+                onclick={() => addNetworkToWallet(network)}
+                class="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition"
+              >
+                ➕ Añadir a Wallet
+              </button>
+              <button
+                type="button"
+                onclick={() => removeCustomNetwork(network.chainId)}
+                class="px-3 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded-lg transition"
+              >
+                🗑️
+              </button>
+            </div>
+          {:else}
+            <button
+              type="button"
+              onclick={() => addPresetNetwork(network)}
+              class="w-full px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition"
+            >
+              ✓ Añadir a Mi Lista
+            </button>
+          {/if}
+        </div>
+      {/each}
+    </div>
+  </div>
+
+  <!-- Card de Redes Personalizadas -->
   <div class="glass-card p-8">
     <!-- Header -->
     <div class="mb-8">

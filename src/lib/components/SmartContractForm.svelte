@@ -24,11 +24,14 @@
   let contractABI = $state('');
   let selectedFunction = $state('');
   let functionParams = $state<string[]>([]);
+  let ethValue = $state(''); // 🔥 NUEVO: Valor en ETH a enviar
   let isLoading = $state(false);
   let transactionHash = $state('');
   let showHashDisplay = $state(false);
   let parsedABI = $state<any[]>([]);
   let availableFunctions = $state<any[]>([]);
+  let contractBalance = $state<string | null>(null); // 🔥 Balance del contrato
+  let isLoadingBalance = $state(false);
 
   /* ================================
      DERIVED VALUES
@@ -122,6 +125,12 @@
       }
     }
 
+    // 🔥 Validar ethValue si la función es payable
+    if (func.stateMutability === 'payable' && (!ethValue || parseFloat(ethValue) <= 0)) {
+      showError('Esta función requiere enviar ETH. Ingresa un monto mayor a 0');
+      return;
+    }
+
     isLoading = true;
     showHashDisplay = false;
 
@@ -157,8 +166,15 @@
         return param;
       });
 
-      // Ejecutar función
-      const tx = await contract[selectedFunction](...processedParams);
+      // 🔥 NUEVO: Preparar opciones de transacción con value si es payable
+      const txOptions: any = {};
+      if (func.stateMutability === 'payable' && ethValue && parseFloat(ethValue) > 0) {
+        txOptions.value = ethers.parseEther(String(ethValue)); // Convertir a string
+        console.log('💰 Enviando', ethValue, 'ETH con la transacción');
+      }
+
+      // Ejecutar función con o sin value
+      const tx = await contract[selectedFunction](...processedParams, txOptions);
       
       transactionHash = tx.hash;
       showHashDisplay = true;
@@ -260,10 +276,112 @@
     contractABI = '';
     selectedFunction = '';
     functionParams = [];
+    ethValue = '';
     parsedABI = [];
     availableFunctions = [];
     showHashDisplay = false;
     transactionHash = '';
+  }
+
+  /**
+   * 🔥 NUEVO: Cargar contrato de ejemplo (TransferContract)
+   */
+  function loadExampleContract(): void {
+    contractAddress = '0x5e17b14ADd6c386305A32928F985b29bbA34Eff5';
+    contractABI = JSON.stringify([
+      {
+        "inputs": [
+          {
+            "internalType": "address payable",
+            "name": "_to",
+            "type": "address"
+          }
+        ],
+        "name": "sendTo",
+        "outputs": [],
+        "stateMutability": "payable",
+        "type": "function"
+      },
+      {
+        "anonymous": false,
+        "inputs": [
+          {
+            "indexed": false,
+            "internalType": "address",
+            "name": "from",
+            "type": "address"
+          },
+          {
+            "indexed": false,
+            "internalType": "address",
+            "name": "to",
+            "type": "address"
+          },
+          {
+            "indexed": false,
+            "internalType": "uint256",
+            "name": "amount",
+            "type": "uint256"
+          }
+        ],
+        "name": "Sent",
+        "type": "event"
+      },
+      {
+        "stateMutability": "payable",
+        "type": "receive"
+      },
+      {
+        "inputs": [],
+        "name": "getBalance",
+        "outputs": [
+          {
+            "internalType": "uint256",
+            "name": "",
+            "type": "uint256"
+          }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+      }
+    ], null, 2);
+    
+    parseABI();
+    showSuccess('✅ Contrato de ejemplo cargado: TransferContract');
+  }
+
+  /**
+   * 🔥 NUEVO: Consultar balance del contrato
+   */
+  async function getContractBalance(): Promise<void> {
+    if (!contractAddress || !ethers.isAddress(contractAddress)) {
+      showError('Ingresa una dirección de contrato válida');
+      return;
+    }
+
+    isLoadingBalance = true;
+    contractBalance = null;
+
+    try {
+      const provider = walletService.getProvider();
+      if (!provider) {
+        throw new Error('PROVIDER_NOT_INITIALIZED');
+      }
+
+      // Primero intentar obtener el balance nativo del contrato (más confiable)
+      const balance = await provider.getBalance(contractAddress);
+      contractBalance = ethers.formatEther(balance);
+      
+      console.log('💰 Balance del contrato:', contractBalance, currentCurrency());
+      showSuccess(`Balance: ${contractBalance} ${currentCurrency()}`);
+
+    } catch (error: any) {
+      console.error('Error al consultar balance:', error);
+      showError('No se pudo consultar el balance del contrato');
+      contractBalance = '0';
+    } finally {
+      isLoadingBalance = false;
+    }
   }
 </script>
 
@@ -287,16 +405,39 @@
         </p>
       </div>
     {:else}
+      <!-- 🔥 NUEVO: Botón de ejemplo rápido -->
+      <div class="bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border border-purple-500/20 rounded-xl p-4 mb-6">
+        <div class="flex items-start justify-between gap-4">
+          <div class="flex-1">
+            <p class="text-purple-300 text-sm font-semibold mb-2">
+              🚀 Prueba rápida con TransferContract
+            </p>
+            <p class="text-purple-200 text-xs leading-relaxed">
+              Carga automáticamente tu contrato desplegado en Remix para enviar ETH desde el contrato a cualquier cuenta.
+            </p>
+          </div>
+          <button
+            type="button"
+            onclick={loadExampleContract}
+            disabled={isLoading}
+            class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+          >
+            ⚡ Cargar Ejemplo
+          </button>
+        </div>
+      </div>
+
       <div class="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 mb-6">
         <p class="text-blue-300 text-sm font-semibold mb-2">
           💡 Cómo usar
         </p>
         <ul class="text-blue-200 text-xs leading-relaxed space-y-1">
-          <li>1. Ingresa la dirección del contrato</li>
+          <li>1. Ingresa la dirección del contrato (o usa el ejemplo)</li>
           <li>2. Pega el ABI del contrato (formato JSON)</li>
           <li>3. Selecciona la función que deseas ejecutar</li>
           <li>4. Completa los parámetros requeridos</li>
-          <li>5. Ejecuta y captura el hash de la transacción</li>
+          <li>5. Si la función es payable, ingresa el monto de ETH</li>
+          <li>6. Ejecuta y captura el hash de la transacción</li>
         </ul>
       </div>
     {/if}
@@ -339,14 +480,50 @@
           rows="6"
           class="w-full px-4 py-3 border border-slate-700/50 rounded-xl bg-slate-800/40 text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 disabled:opacity-40 font-mono text-xs resize-none"
         ></textarea>
-        <button
-          type="button"
-          onclick={parseABI}
-          disabled={!contractABI || isLoading || !isConnected}
-          class="mt-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          🔍 Parsear ABI
-        </button>
+        <div class="flex gap-2 mt-2">
+          <button
+            type="button"
+            onclick={parseABI}
+            disabled={!contractABI || isLoading || !isConnected}
+            class="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            🔍 Parsear ABI
+          </button>
+          <button
+            type="button"
+            onclick={getContractBalance}
+            disabled={!contractAddress || !ethers.isAddress(contractAddress) || isLoadingBalance || !isConnected}
+            class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {isLoadingBalance ? '⏳' : '💰'} Ver Balance
+          </button>
+        </div>
+        
+        <!-- 🔥 Mostrar balance del contrato -->
+        {#if contractBalance !== null}
+          <div class="mt-3 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-xs text-emerald-400 font-semibold mb-1">💰 Balance del Contrato</p>
+                <p class="text-2xl font-bold text-emerald-300">{contractBalance} {currentCurrency()}</p>
+              </div>
+              {#if parseFloat(contractBalance) === 0}
+                <span class="text-xs text-amber-400 bg-amber-500/10 px-2 py-1 rounded">
+                  Sin fondos
+                </span>
+              {:else}
+                <span class="text-xs text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded">
+                  ✓ Con fondos
+                </span>
+              {/if}
+            </div>
+            {#if parseFloat(contractBalance) === 0}
+              <p class="text-xs text-amber-300/70 mt-2">
+                ℹ️ El contrato no tiene fondos. Envía ETH al contrato primero para poder usar la función sendTo.
+              </p>
+            {/if}
+          </div>
+        {/if}
       </div>
 
       {#if availableFunctions.length > 0}
@@ -392,6 +569,36 @@
               </div>
             {/each}
           </div>
+        {/if}
+
+        <!-- 🔥 NUEVO: ETH Value (solo si la función es payable) -->
+        {#if selectedFunction}
+          {@const func = availableFunctions.find(f => f.name === selectedFunction)}
+          {#if func?.stateMutability === 'payable'}
+            <div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4">
+              <label for="eth-value" class="block text-sm font-semibold text-emerald-300 mb-2">
+                💰 Monto a Enviar (ETH)
+              </label>
+              <div class="relative">
+                <input
+                  id="eth-value"
+                  bind:value={ethValue}
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  placeholder="0.01"
+                  disabled={isLoading}
+                  class="w-full px-4 py-2.5 border border-emerald-500/30 rounded-lg bg-slate-800/40 text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/50 disabled:opacity-40 text-sm"
+                />
+                <span class="absolute right-3 top-2.5 text-emerald-400 text-sm font-semibold">
+                  {currentCurrency()}
+                </span>
+              </div>
+              <p class="text-xs text-emerald-300/70 mt-2">
+                ⚠️ Esta función requiere enviar ETH. El monto será transferido junto con la transacción.
+              </p>
+            </div>
+          {/if}
         {/if}
 
         <!-- Submit Button -->
