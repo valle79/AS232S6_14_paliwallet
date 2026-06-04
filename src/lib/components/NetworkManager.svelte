@@ -20,6 +20,8 @@
   =================================*/
   let customNetworks = $state<NetworkConfig[]>([]);
   let showAddForm = $state(false);
+  let showEditModal = $state(false);
+  let editingNetwork = $state<NetworkConfig | null>(null);
   
   // Form fields
   let networkName = $state<string>('');
@@ -226,17 +228,106 @@
   }
 
   /**
-   * Eliminar red personalizada
+   * Eliminar red personalizada (marcar como inactiva)
    */
   function removeCustomNetwork(chainId: number | string): void {
     const network = customNetworks.find(net => net.chainId === chainId);
     if (!network) return;
 
-    if (confirm(`¿Estás seguro de eliminar la red "${network.name}"?`)) {
+    if (confirm(`¿Desactivar la red "${network.name}"? Podrás reactivarla después.`)) {
+      // Marcar como inactiva en lugar de eliminar
+      customNetworks = customNetworks.map(net => 
+        net.chainId === chainId ? { ...net, isActive: false } : net
+      );
+      saveCustomNetworks();
+      showSuccess(`🔕 Red "${network.name}" desactivada`);
+    }
+  }
+
+  /**
+   * 🔥 NUEVO: Reactivar red
+   */
+  function reactivateNetwork(chainId: number | string): void {
+    const network = customNetworks.find(net => net.chainId === chainId);
+    if (!network) return;
+
+    customNetworks = customNetworks.map(net => 
+      net.chainId === chainId ? { ...net, isActive: true } : net
+    );
+    saveCustomNetworks();
+    showSuccess(`✅ Red "${network.name}" reactivada`);
+  }
+
+  /**
+   * 🔥 NUEVO: Eliminar permanentemente
+   */
+  function deleteNetworkPermanently(chainId: number | string): void {
+    const network = customNetworks.find(net => net.chainId === chainId);
+    if (!network) return;
+
+    if (confirm(`¿Eliminar permanentemente "${network.name}"? Esta acción no se puede deshacer.`)) {
       customNetworks = customNetworks.filter(net => net.chainId !== chainId);
       saveCustomNetworks();
-      showSuccess(`🗑️ Red "${network.name}" eliminada`);
+      showSuccess(`🗑️ Red "${network.name}" eliminada permanentemente`);
     }
+  }
+
+  /**
+   * 🔥 NUEVO: Abrir modal de edición
+   */
+  function openEditModal(network: NetworkConfig): void {
+    editingNetwork = network;
+    networkName = network.name;
+    chainId = network.chainId.toString();
+    rpcUrl = network.rpcUrl || '';
+    currencySymbol = network.nativeCurrency.symbol;
+    explorerUrl = network.blockExplorerUrl || '';
+    showEditModal = true;
+  }
+
+  /**
+   * 🔥 NUEVO: Guardar cambios de edición
+   */
+  function saveEditedNetwork(): void {
+    if (!editingNetwork) return;
+
+    const name = String(networkName || '').trim();
+    const rpc = String(rpcUrl || '').trim();
+    const symbol = String(currencySymbol || '').trim();
+
+    if (!name || !rpc || !symbol) {
+      showError('Completa todos los campos obligatorios');
+      return;
+    }
+
+    customNetworks = customNetworks.map(net => 
+      net.chainId === editingNetwork!.chainId
+        ? {
+            ...net,
+            name,
+            rpcUrl: rpc,
+            nativeCurrency: {
+              ...net.nativeCurrency,
+              symbol,
+              name: symbol
+            },
+            blockExplorerUrl: explorerUrl || undefined
+          }
+        : net
+    );
+
+    saveCustomNetworks();
+    showSuccess(`✅ Red "${name}" actualizada`);
+    closeEditModal();
+  }
+
+  /**
+   * 🔥 NUEVO: Cerrar modal de edición
+   */
+  function closeEditModal(): void {
+    showEditModal = false;
+    editingNetwork = null;
+    resetForm();
   }
 
   /**
@@ -294,25 +385,32 @@
    * 🔥 NUEVO: Añadir red precargada con un click
    */
   function addPresetNetwork(network: NetworkConfig): void {
-    // Verificar si ya existe
-    const exists = customNetworks.some(net => net.chainId === network.chainId);
-    if (exists) {
-      showError(`La red "${network.name}" ya está añadida`);
+    // Verificar si ya existe (activa o inactiva)
+    const existing = customNetworks.find(net => net.chainId === network.chainId);
+    
+    if (existing) {
+      if (existing.isActive === false) {
+        // Si existe pero está inactiva, reactivarla
+        reactivateNetwork(network.chainId);
+      } else {
+        showError(`La red "${network.name}" ya está activa`);
+      }
       return;
     }
 
-    // Añadir a la lista
-    customNetworks = [...customNetworks, network];
+    // Añadir nueva red como activa
+    customNetworks = [...customNetworks, { ...network, isActive: true }];
     saveCustomNetworks();
 
     showSuccess(`✅ Red "${network.name}" añadida a tu lista`);
   }
 
   /**
-   * 🔥 NUEVO: Verificar si una red precargada ya está añadida
+   * 🔥 NUEVO: Verificar si una red precargada está activa
    */
-  function isPresetNetworkAdded(chainId: number): boolean {
-    return customNetworks.some(net => net.chainId === chainId);
+  function isPresetNetworkActive(chainId: number | string): boolean {
+    const network = customNetworks.find(net => net.chainId.toString() === chainId.toString());
+    return network ? network.isActive !== false : false;
   }
 
   /**
@@ -379,7 +477,7 @@
   /**
    * 🔥 NUEVO: Verificar si estamos en una red específica
    */
-  function isCurrentNetwork(chainId: number): boolean {
+  function isCurrentNetwork(chainId: number | string): boolean {
     const currentChainId = walletService.currentNetwork?.chainId;
     return currentChainId ? currentChainId.toString() === chainId.toString() : false;
   }
@@ -413,7 +511,7 @@
 
       <div class="space-y-3 max-h-[600px] overflow-y-auto pr-2">
         {#each PRESET_NETWORKS as network (network.chainId)}
-          {@const isAdded = isPresetNetworkAdded(network.chainId)}
+          {@const isActive = isPresetNetworkActive(network.chainId)}
           {@const isCurrent = isCurrentNetwork(network.chainId)}
           
           <div class="bg-slate-800/40 border rounded-xl p-4 transition-all {isCurrent ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-slate-700/50 hover:border-slate-600/50'}">
@@ -448,7 +546,7 @@
             </div>
 
             <div class="flex gap-2">
-              {#if !isAdded}
+              {#if !isActive}
                 <button
                   type="button"
                   onclick={() => addPresetNetwork(network)}
@@ -471,11 +569,11 @@
                   disabled={!isConnected}
                   class="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-semibold rounded-lg transition disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  � Cambiar a Esta Red
+                  🔄 Cambiar a Esta Red
                 </button>
               {/if}
               
-              {#if isAdded}
+              {#if isActive}
                 <button
                   type="button"
                   onclick={() => removeCustomNetwork(network.chainId)}
@@ -658,3 +756,147 @@
     </div>
   </div>
 </div>
+
+<!-- 🔥 Modal de Edición -->
+{#if showEditModal && editingNetwork}
+  <div
+    class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+    role="button"
+    tabindex="0"
+    onclick={closeEditModal}
+    onkeydown={(e) => {
+      if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+        closeEditModal();
+      }
+    }}
+  >
+    <div
+      class="bg-[#0f172a] border border-slate-700 rounded-2xl p-6 max-w-md w-full shadow-2xl"
+      role="dialog"
+      aria-modal="true"
+      tabindex="0"
+      onclick={(e) => e.stopPropagation()}
+      onkeydown={(e) => e.stopPropagation()}
+    >
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="text-lg font-bold text-white">
+          ✏️ Editar Red
+        </h3>
+
+        <button
+          type="button"
+          onclick={closeEditModal}
+          class="text-slate-400 hover:text-white transition"
+        >
+          ✕
+        </button>
+      </div>
+
+      <form
+        onsubmit={(e) => {
+          e.preventDefault();
+          saveEditedNetwork();
+        }}
+        class="space-y-4"
+      >
+        <div>
+          <label
+            for="edit-network-name"
+            class="block text-sm font-semibold text-slate-300 mb-2"
+          >
+            Nombre de la Red
+          </label>
+
+          <input
+            id="edit-network-name"
+            bind:value={networkName}
+            type="text"
+            class="w-full px-4 py-2.5 border border-slate-700/50 rounded-lg bg-slate-800/40 text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+          />
+        </div>
+
+        <div>
+          <label
+            for="edit-chain-id"
+            class="block text-sm font-semibold text-slate-300 mb-2"
+          >
+            Chain ID (no editable)
+          </label>
+
+          <input
+            id="edit-chain-id"
+            value={chainId}
+            type="text"
+            disabled
+            class="w-full px-4 py-2.5 border border-slate-700/50 rounded-lg bg-slate-800/20 text-slate-500 text-sm cursor-not-allowed"
+          />
+        </div>
+
+        <div>
+          <label
+            for="edit-rpc-url"
+            class="block text-sm font-semibold text-slate-300 mb-2"
+          >
+            RPC URL
+          </label>
+
+          <input
+            id="edit-rpc-url"
+            bind:value={rpcUrl}
+            type="url"
+            class="w-full px-4 py-2.5 border border-slate-700/50 rounded-lg bg-slate-800/40 text-white text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+          />
+        </div>
+
+        <div>
+          <label
+            for="edit-currency-symbol"
+            class="block text-sm font-semibold text-slate-300 mb-2"
+          >
+            Símbolo de Moneda
+          </label>
+
+          <input
+            id="edit-currency-symbol"
+            bind:value={currencySymbol}
+            type="text"
+            class="w-full px-4 py-2.5 border border-slate-700/50 rounded-lg bg-slate-800/40 text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+          />
+        </div>
+
+        <div>
+          <label
+            for="edit-explorer-url"
+            class="block text-sm font-semibold text-slate-300 mb-2"
+          >
+            Block Explorer URL (Opcional)
+          </label>
+
+          <input
+            id="edit-explorer-url"
+            bind:value={explorerUrl}
+            type="url"
+            class="w-full px-4 py-2.5 border border-slate-700/50 rounded-lg bg-slate-800/40 text-white text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+          />
+        </div>
+
+        <div class="flex gap-3 pt-2">
+          <button
+            type="button"
+            onclick={closeEditModal}
+            class="flex-1 px-4 py-2.5 border border-slate-700/50 text-slate-300 hover:text-white hover:bg-slate-800/40 rounded-lg font-semibold transition text-sm"
+          >
+            Cancelar
+          </button>
+
+          <button
+            type="submit"
+            class="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold transition text-sm"
+          >
+            ✓ Guardar Cambios
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+{/if}

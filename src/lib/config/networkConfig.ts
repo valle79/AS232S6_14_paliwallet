@@ -19,6 +19,7 @@ export interface NetworkConfig {
   blockExplorerUrl?: string;
   isTestnet: boolean;
   isCustom?: boolean;
+  isActive?: boolean; // 🔥 NUEVO: Para marcar redes como activas/inactivas
 }
 
 /**

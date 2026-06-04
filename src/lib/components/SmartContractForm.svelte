@@ -24,7 +24,7 @@
   let contractABI = $state('');
   let selectedFunction = $state('');
   let functionParams = $state<string[]>([]);
-  let ethValue = $state(''); // 🔥 NUEVO: Valor en ETH a enviar
+  let ethValue = $state(''); // 🔥 Valor en ETH para depositar
   let isLoading = $state(false);
   let transactionHash = $state('');
   let showHashDisplay = $state(false);
@@ -125,10 +125,24 @@
       }
     }
 
-    // 🔥 Validar ethValue si la función es payable
-    if (func.stateMutability === 'payable' && (!ethValue || parseFloat(ethValue) <= 0)) {
-      showError('Esta función requiere enviar ETH. Ingresa un monto mayor a 0');
-      return;
+    // 🔥 VALIDACIÓN CRÍTICA: Verificar fondos del contrato para sendTo
+    if (func.name === 'sendTo' && contractBalance !== null) {
+      const amountIndex = func.inputs.findIndex((inp: any) => inp.name === '_amount');
+      if (amountIndex >= 0 && functionParams[amountIndex]) {
+        const requestedAmount = parseFloat(functionParams[amountIndex]);
+        const availableBalance = parseFloat(contractBalance);
+        
+        if (availableBalance < requestedAmount) {
+          showError(`❌ El contrato solo tiene ${contractBalance} ${currentCurrency()}, necesitas ${functionParams[amountIndex]} ${currentCurrency()}. Deposita más fondos primero.`);
+          return;
+        }
+        
+        console.log('✅ Verificación de balance:', {
+          disponible: availableBalance,
+          requerido: requestedAmount,
+          suficiente: availableBalance >= requestedAmount
+        });
+      }
     }
 
     isLoading = true;
@@ -148,9 +162,21 @@
       // Preparar parámetros (convertir tipos si es necesario)
       const processedParams = functionParams.map((param, index) => {
         const inputType = func.inputs[index].type;
+        const inputName = func.inputs[index].name;
+        
+        console.log(`📝 Procesando parámetro ${index}:`, {
+          name: inputName,
+          type: inputType,
+          value: param
+        });
         
         // Convertir según el tipo
         if (inputType.startsWith('uint') || inputType.startsWith('int')) {
+          if (param.includes('.')) {
+            const amount = ethers.parseUnits(param, 18);
+            console.log(`💰 Convirtiendo ${inputName}: ${param} → ${amount.toString()} Wei`);
+            return amount;
+          }
           return BigInt(param);
         } else if (inputType === 'bool') {
           return param.toLowerCase() === 'true';
@@ -160,40 +186,136 @@
           if (!ethers.isAddress(param)) {
             throw new Error(`Parámetro ${index + 1} no es una dirección válida`);
           }
+          console.log(`📍 Dirección validada: ${param}`);
           return param;
         }
         
         return param;
       });
 
-      // 🔥 NUEVO: Preparar opciones de transacción con value si es payable
-      const txOptions: any = {};
-      if (func.stateMutability === 'payable' && ethValue && parseFloat(ethValue) > 0) {
-        txOptions.value = ethers.parseEther(String(ethValue)); // Convertir a string
-        console.log('💰 Enviando', ethValue, 'ETH con la transacción');
+      console.log('🚀 Llamando función del contrato:', {
+        function: selectedFunction,
+        contract: contractAddress,
+        params: processedParams.map((p, i) => ({
+          name: func.inputs[i].name,
+          value: typeof p === 'bigint' ? p.toString() : p
+        }))
+      });
+
+      // 🔥 NUEVO: Estimar gas primero para detectar reverts ANTES de enviar
+      try {
+        showInfo('🧪 Simulando transacción...');
+        const estimatedGas = await contract[selectedFunction].estimateGas(...processedParams);
+        console.log('✅ Gas estimado:', estimatedGas.toString());
+        
+        // 🔥 LLAMAR LA FUNCIÓN CON GAS LÍMITE
+        const tx = await contract[selectedFunction](...processedParams, {
+          gasLimit: estimatedGas * BigInt(120) / BigInt(100) // +20% margen
+        });
+        
+        transactionHash = tx.hash;
+        showHashDisplay = true;
+
+        showSuccess(`✅ Transacción enviada: ${tx.hash.substring(0, 10)}...`);
+        showInfo('⏳ Esperando confirmación en blockchain...');
+
+        // Esperar confirmación y verificar status
+        const receipt = await tx.wait();
+        
+        if (receipt && receipt.status === 1) {
+          showSuccess('✅ Transacción confirmada exitosamente');
+          console.log('📊 Receipt:', receipt);
+          
+          // Si es sendTo, actualizar balance del contrato
+          if (func.name === 'sendTo') {
+            setTimeout(() => getContractBalance(), 2000);
+          }
+        } else if (receipt && receipt.status === 0) {
+          showError('❌ La transacción fue confirmada pero FALLÓ en la EVM (revert)');
+          console.error('❌ Transaction reverted:', receipt);
+        }
+        
+      } catch (estimateError: any) {
+        // 🔥 Error en estimateGas = la transacción REVERTIRÁ
+        console.error('❌ estimateGas falló (la tx revertirá):', estimateError);
+        
+        if (estimateError.message?.includes('insufficient funds')) {
+          throw new Error('INSUFFICIENT_CONTRACT_FUNDS');
+        }
+        
+        throw estimateError;
       }
 
-      // Ejecutar función con o sin value
-      const tx = await contract[selectedFunction](...processedParams, txOptions);
-      
-      transactionHash = tx.hash;
-      showHashDisplay = true;
-
-      showSuccess(`Transacción enviada: ${tx.hash.substring(0, 10)}...`);
-
-      // Esperar confirmación
-      monitorTransaction(tx.hash);
     } catch (error: any) {
       console.error('Contract execution error:', error);
 
       const errorMessages: Record<string, string> = {
         SIGNER_NOT_INITIALIZED: 'Conecta tu wallet primero',
         INSUFFICIENT_FUNDS: `❌ No tienes suficientes fondos para pagar el gas. Obtén ${currentCurrency()} de prueba desde un faucet.`,
+        INSUFFICIENT_CONTRACT_FUNDS: `❌ El contrato no tiene fondos suficientes. Deposita primero usando el botón "💰 Depositar".`,
         ACTION_REJECTED: 'Transacción rechazada por el usuario',
         CALL_EXCEPTION: 'Error al ejecutar la función del contrato. Verifica los parámetros.'
       };
 
       const message = errorMessages[error.code] || errorMessages[error.message] || error.message || 'Error al ejecutar función';
+      showError(message);
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  /**
+   * 🔥 NUEVO: Depositar fondos al contrato
+   */
+  async function depositToContract(): Promise<void> {
+    if (!ethers.isAddress(contractAddress)) {
+      showError('Ingresa una dirección de contrato válida');
+      return;
+    }
+
+    if (!ethValue || parseFloat(ethValue) <= 0) {
+      showError('Ingresa una cantidad válida de ETH');
+      return;
+    }
+
+    isLoading = true;
+
+    try {
+      showInfo('Depositando fondos al contrato...');
+
+      const signer = walletService.getSigner();
+      if (!signer) {
+        throw new Error('SIGNER_NOT_INITIALIZED');
+      }
+
+      // Enviar ETH directamente al contrato (activará la función receive())
+      const tx = await signer.sendTransaction({
+        to: contractAddress,
+        value: ethers.parseEther(ethValue)
+      });
+
+      transactionHash = tx.hash;
+      showHashDisplay = true;
+
+      showSuccess(`✅ Depósito enviado: ${tx.hash.substring(0, 10)}...`);
+      showInfo('⏳ Esperando confirmación...');
+
+      // Esperar confirmación
+      await monitorTransaction(tx.hash);
+
+      // Actualizar balance del contrato
+      await getContractBalance();
+
+    } catch (error: any) {
+      console.error('Deposit error:', error);
+
+      const errorMessages: Record<string, string> = {
+        SIGNER_NOT_INITIALIZED: 'Conecta tu wallet primero',
+        INSUFFICIENT_FUNDS: `❌ No tienes suficientes fondos`,
+        ACTION_REJECTED: 'Transacción rechazada por el usuario'
+      };
+
+      const message = errorMessages[error.code] || errorMessages[error.message] || error.message || 'Error al depositar';
       showError(message);
     } finally {
       isLoading = false;
@@ -287,67 +409,11 @@
    * 🔥 NUEVO: Cargar contrato de ejemplo (TransferContract)
    */
   function loadExampleContract(): void {
-    contractAddress = '0x5e17b14ADd6c386305A32928F985b29bbA34Eff5';
-    contractABI = JSON.stringify([
-      {
-        "inputs": [
-          {
-            "internalType": "address payable",
-            "name": "_to",
-            "type": "address"
-          }
-        ],
-        "name": "sendTo",
-        "outputs": [],
-        "stateMutability": "payable",
-        "type": "function"
-      },
-      {
-        "anonymous": false,
-        "inputs": [
-          {
-            "indexed": false,
-            "internalType": "address",
-            "name": "from",
-            "type": "address"
-          },
-          {
-            "indexed": false,
-            "internalType": "address",
-            "name": "to",
-            "type": "address"
-          },
-          {
-            "indexed": false,
-            "internalType": "uint256",
-            "name": "amount",
-            "type": "uint256"
-          }
-        ],
-        "name": "Sent",
-        "type": "event"
-      },
-      {
-        "stateMutability": "payable",
-        "type": "receive"
-      },
-      {
-        "inputs": [],
-        "name": "getBalance",
-        "outputs": [
-          {
-            "internalType": "uint256",
-            "name": "",
-            "type": "uint256"
-          }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-      }
-    ], null, 2);
+    contractAddress = '0x998C166a8d7A9c808b0bFbB517B1359661E2038A';
+    contractABI = '[{"inputs":[{"internalType":"address payable","name":"_to","type":"address"},{"internalType":"uint256","name":"_amount","type":"uint256"}],"name":"sendTo","outputs":[],"stateMutability":"nonpayable","type":"function"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"from","type":"address"},{"indexed":false,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"}],"name":"Sent","type":"event"},{"stateMutability":"payable","type":"receive"},{"inputs":[],"name":"getBalance","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}]';
     
     parseABI();
-    showSuccess('✅ Contrato de ejemplo cargado: TransferContract');
+    showSuccess('✅ Contrato actualizado: 0x998C...038A');
   }
 
   /**
@@ -429,16 +495,28 @@
 
       <div class="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4 mb-6">
         <p class="text-blue-300 text-sm font-semibold mb-2">
-          💡 Cómo usar
+          💡 Cómo funciona TransferContract
         </p>
         <ul class="text-blue-200 text-xs leading-relaxed space-y-1">
-          <li>1. Ingresa la dirección del contrato (o usa el ejemplo)</li>
-          <li>2. Pega el ABI del contrato (formato JSON)</li>
-          <li>3. Selecciona la función que deseas ejecutar</li>
-          <li>4. Completa los parámetros requeridos</li>
-          <li>5. Si la función es payable, ingresa el monto de ETH</li>
-          <li>6. Ejecuta y captura el hash de la transacción</li>
+          <li>1. Click en "⚡ Cargar Ejemplo"</li>
+          <li>2. <strong>Deposita fondos al contrato</strong> (ej: 0.1 {currentCurrency()})</li>
+          <li>3. Selecciona la función "sendTo"</li>
+          <li>4. Ingresa <strong>_to</strong>: dirección del destinatario</li>
+          <li>5. Ingresa <strong>_amount</strong>: monto a enviar (ej: 0.01)</li>
+          <li>6. El contrato enviará ese monto al destinatario</li>
+          <li>7. Puedes enviar múltiples transacciones del mismo contrato</li>
         </ul>
+        <div class="mt-3 bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-lg space-y-2">
+          <p class="text-emerald-300 text-[11px] font-semibold">
+            ✅ Para que funcione correctamente:
+          </p>
+          <ul class="text-emerald-200 text-[10px] space-y-1">
+            <li>• <strong>Paso 1 (Depósito):</strong> Tu cuenta → Contrato (0.1 TSYS)</li>
+            <li>• <strong>Paso 2 (sendTo):</strong> Contrato → Destinatario (0.01 TSYS)</li>
+            <li>• <strong>Paso 3 (sendTo):</strong> Contrato → Otro destinatario (0.02 TSYS)</li>
+            <li>• Puedes hacer múltiples envíos hasta agotar el balance</li>
+          </ul>
+        </div>
       </div>
     {/if}
 
@@ -519,11 +597,54 @@
             </div>
             {#if parseFloat(contractBalance) === 0}
               <p class="text-xs text-amber-300/70 mt-2">
-                ℹ️ El contrato no tiene fondos. Envía ETH al contrato primero para poder usar la función sendTo.
+                ⚠️ El contrato no tiene fondos. Deposita ETH usando el botón de abajo.
               </p>
             {/if}
           </div>
         {/if}
+      </div>
+
+      <!-- 🔥 NUEVO: Sección de depósito -->
+      <div class="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/20 rounded-xl p-5">
+        <h3 class="text-sm font-bold text-yellow-300 mb-3 flex items-center gap-2">
+          <span>💰</span> Depositar Fondos al Contrato
+        </h3>
+        <p class="text-xs text-yellow-200/70 mb-4">
+          Para que el contrato pueda enviar ETH, primero debes depositar fondos en él.
+        </p>
+        
+        <div class="space-y-3">
+          <div>
+            <label for="eth-value" class="block text-xs text-yellow-300 font-semibold mb-2">
+              Cantidad a depositar ({currentCurrency()})
+            </label>
+            <input
+              id="eth-value"
+              bind:value={ethValue}
+              type="text"
+              placeholder="0.01"
+              disabled={isLoading || !isConnected}
+              class="w-full px-4 py-2.5 border border-yellow-700/50 rounded-lg bg-slate-800/40 text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-yellow-500/50 focus:border-yellow-500/50 disabled:opacity-40 text-sm"
+            />
+            <p class="text-[10px] text-yellow-200/50 mt-1.5">
+              Ejemplo: 0.01 para enviar 0.01 {currentCurrency()}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onclick={depositToContract}
+            disabled={isLoading || !isConnected || !contractAddress || !ethers.isAddress(contractAddress) || !ethValue}
+            class="w-full px-4 py-3 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 text-white font-bold rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-yellow-600/20 flex items-center justify-center gap-2 text-sm"
+          >
+            {#if isLoading}
+              <LoadingSpinner size="small" color="white" />
+              Depositando...
+            {:else}
+              💰 Depositar al Contrato
+            {/if}
+          </button>
+        </div>
       </div>
 
       {#if availableFunctions.length > 0}
@@ -557,46 +678,66 @@
               <div>
                 <label for="param-{index}" class="block text-xs text-slate-400 mb-1.5">
                   {input?.name || `Parámetro ${index + 1}`} ({input?.type})
+                  {#if func?.name === 'sendTo' && input?.name === '_amount'}
+                    <span class="text-emerald-400 font-semibold">← Ingresa en {currentCurrency()} (ej: 0.01)</span>
+                  {/if}
                 </label>
                 <input
                   id="param-{index}"
                   bind:value={functionParams[index]}
                   type="text"
-                  placeholder={`Ingresa ${input?.type}`}
+                  placeholder={func?.name === 'sendTo' && input?.name === '_amount' ? '0.01' : `Ingresa ${input?.type}`}
                   disabled={isLoading}
                   class="w-full px-4 py-2.5 border border-slate-700/50 rounded-lg bg-slate-800/40 text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500/50 disabled:opacity-40 text-sm"
                 />
+                {#if func?.name === 'sendTo' && input?.name === '_amount'}
+                  <p class="text-[10px] text-slate-500 mt-1">
+                    💡 El contrato debe tener al menos este monto en su balance
+                  </p>
+                {/if}
               </div>
             {/each}
           </div>
         {/if}
 
-        <!-- 🔥 NUEVO: ETH Value (solo si la función es payable) -->
+        <!-- 🔥 Información sobre la función sendTo -->
         {#if selectedFunction}
           {@const func = availableFunctions.find(f => f.name === selectedFunction)}
-          {#if func?.stateMutability === 'payable'}
-            <div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4">
-              <label for="eth-value" class="block text-sm font-semibold text-emerald-300 mb-2">
-                💰 Monto a Enviar (ETH)
-              </label>
-              <div class="relative">
-                <input
-                  id="eth-value"
-                  bind:value={ethValue}
-                  type="number"
-                  step="0.001"
-                  min="0"
-                  placeholder="0.01"
-                  disabled={isLoading}
-                  class="w-full px-4 py-2.5 border border-emerald-500/30 rounded-lg bg-slate-800/40 text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/50 disabled:opacity-40 text-sm"
-                />
-                <span class="absolute right-3 top-2.5 text-emerald-400 text-sm font-semibold">
-                  {currentCurrency()}
-                </span>
-              </div>
-              <p class="text-xs text-emerald-300/70 mt-2">
-                ⚠️ Esta función requiere enviar ETH. El monto será transferido junto con la transacción.
+          {#if func?.name === 'sendTo'}
+            <div class="bg-purple-500/10 border border-purple-500/20 rounded-xl p-4">
+              <p class="text-sm font-semibold text-purple-300 mb-2">
+                🎯 Vista previa de la transacción:
               </p>
+              <ul class="space-y-2 text-xs text-purple-200">
+                <li class="flex items-start gap-2">
+                  <span class="shrink-0">📤</span>
+                  <span><strong>From:</strong> {contractAddress} (Contrato)</span>
+                </li>
+                {#if functionParams.length > 0 && functionParams[0]}
+                  <li class="flex items-start gap-2">
+                    <span class="shrink-0">📥</span>
+                    <span><strong>To:</strong> {functionParams[0]}</span>
+                  </li>
+                {/if}
+                {#if functionParams.length > 1 && functionParams[1]}
+                  <li class="flex items-start gap-2">
+                    <span class="shrink-0">💰</span>
+                    <span><strong>Amount:</strong> {functionParams[1]} {currentCurrency()}</span>
+                  </li>
+                {/if}
+              </ul>
+              {#if contractBalance !== null}
+                <div class="mt-3 p-2 bg-slate-800/60 rounded-lg">
+                  <p class="text-[10px] text-slate-400">
+                    Balance del contrato: <span class="text-emerald-400 font-bold">{contractBalance} {currentCurrency()}</span>
+                  </p>
+                  {#if functionParams.length > 1 && functionParams[1] && parseFloat(contractBalance) < parseFloat(functionParams[1])}
+                    <p class="text-[10px] text-red-400 mt-1">
+                      ⚠️ El contrato no tiene fondos suficientes
+                    </p>
+                  {/if}
+                </div>
+              {/if}
             </div>
           {/if}
         {/if}
