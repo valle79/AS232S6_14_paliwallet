@@ -441,6 +441,55 @@ private handleChainChanged = async (chainId: string) => {
     this.handleDisconnection();
   }
 
+  async fullDisconnectWallet(): Promise<void> {
+    this.cleanup();
+    this.handleDisconnection();
+
+    try {
+      if (this.ethereum && typeof this.ethereum.request === 'function') {
+        const provider = this.ethereum;
+
+        // EIP-2255: Revoke permissions to force re-authorization
+        if (provider.request.length === 2 || provider.request.constructor.name === 'AsyncFunction') {
+          // Modern wallets support wallet_revokePermissions
+          try {
+            await provider.request({
+              method: 'wallet_revokePermissions',
+              params: [{ eth_accounts: {} }]
+            });
+            console.log('✅ Permisos revocados exitosamente');
+            return;
+          } catch (permError: any) {
+            // wallet_revokePermissions not supported, try alternative
+            if (permError.code !== 4200 && permError.code !== -32601) {
+              console.warn('wallet_revokePermissions falló:', permError);
+            }
+          }
+        }
+
+        // Fallback: request eth_accounts with empty params to force disconnect state
+        try {
+          await provider.request({
+            method: 'eth_requestAccounts',
+            params: []
+          });
+        } catch {
+          // Intentar desconexión vía wallet_watchAsset u otro método
+          try {
+            await provider.request({
+              method: 'wallet_requestPermissions',
+              params: [{ eth_accounts: {} }]
+            });
+          } catch {
+            // Silently fail if neither method works
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Full disconnect: error al revocar permisos', error);
+    }
+  }
+
   async autoConnect(): Promise<boolean> {
     if (!this.ethereum) {
       return false;

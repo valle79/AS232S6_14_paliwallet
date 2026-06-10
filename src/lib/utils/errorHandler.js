@@ -112,6 +112,18 @@ export function mapWalletError(error) {
       message: 'La red ha cambiado. La aplicación se actualizará automáticamente.',
       type: 'info',
       action: 'none'
+    },
+
+    'PERMISSION_REVOKE_ERROR': {
+      message: 'No se pudieron revocar los permisos. Se ha cerrado la sesión localmente.',
+      type: 'warning',
+      action: 'none'
+    },
+
+    'FULL_DISCONNECT_ERROR': {
+      message: 'Error al cerrar sesión completamente. Intenta de nuevo.',
+      type: 'error',
+      action: 'retry'
     }
   };
   

@@ -12,6 +12,8 @@
   import TransactionForm from '$lib/components/TransactionForm.svelte';
   import SmartContractForm from '$lib/components/SmartContractForm.svelte';
   import NetworkManager from '$lib/components/NetworkManager.svelte';
+  import BalanceChecker from '$lib/components/BalanceChecker.svelte';
+  import Faucet from '$lib/components/Faucet.svelte';
 
   /* ================================
      STATE (Svelte 5 runes)
@@ -28,7 +30,7 @@
   let balanceLoading = $state(false);
   let connectionError = $state('');
   let balanceError = $state('');
-  let activeTab = $state('wallet'); // 'wallet' | 'send' | 'contract' | 'networks'
+  let activeTab = $state('wallet'); // 'wallet' | 'send' | 'contract' | 'networks' | 'balance' | 'faucet'
 
   const retryHandler = new RetryHandler(3, 1000);
 
@@ -148,6 +150,20 @@
     showSuccess('Wallet desconectada');
   }
 
+  async function handleFullDisconnect() {
+    connectionLoading = true;
+    try {
+      await walletService.fullDisconnectWallet();
+      handleDisconnection();
+      activeTab = 'wallet';
+      showSuccess('Sesión cerrada completamente. Vuelve a conectar para usar la wallet.');
+    } catch (error) {
+      showError('Error al cerrar sesión completamente');
+    } finally {
+      connectionLoading = false;
+    }
+  }
+
   function handleDisconnection() {
     walletState.isConnected = false;
     walletState.address = '';
@@ -261,41 +277,55 @@
         error={connectionError}
         onconnect={handleConnect}
         ondisconnect={handleDisconnect}
+        onfulldisconnect={handleFullDisconnect}
       />
     </div>
 
-    <!-- Wallet Info Section -->
-    {#if walletState.isConnected}
-      
-      <!-- Tab Navigation -->
-      <div class="flex justify-center gap-2 mb-10 flex-wrap">
-        <button
-          onclick={() => activeTab = 'wallet'}
-          class="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 {activeTab === 'wallet' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25' : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50'}"
-        >
-          💰 Mi Wallet
-        </button>
-        <button
-          onclick={() => activeTab = 'send'}
-          class="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 {activeTab === 'send' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25' : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50'}"
-        >
-          ⚡ Enviar Transacción
-        </button>
-        <button
-          onclick={() => activeTab = 'contract'}
-          class="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 {activeTab === 'contract' ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/25' : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50'}"
-        >
-          🤖 Smart Contract
-        </button>
-        <button
-          onclick={() => activeTab = 'networks'}
-          class="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 {activeTab === 'networks' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25' : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50'}"
-        >
-          🌐 Gestión de Redes
-        </button>
-      </div>
+    <!-- Tab Navigation (always visible) -->
+    <div class="flex justify-center gap-2 mb-10 flex-wrap">
+      <button
+        onclick={() => activeTab = 'wallet'}
+        class="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 {activeTab === 'wallet' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25' : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50'}"
+      >
+        💰 Mi Wallet
+      </button>
+      <button
+        onclick={() => activeTab = 'send'}
+        disabled={!walletState.isConnected}
+        class="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 {activeTab === 'send' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25' : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50'} {!walletState.isConnected ? 'opacity-50 cursor-not-allowed' : ''}"
+      >
+        ⚡ Enviar
+      </button>
+      <button
+        onclick={() => activeTab = 'contract'}
+        disabled={!walletState.isConnected}
+        class="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 {activeTab === 'contract' ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/25' : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50'} {!walletState.isConnected ? 'opacity-50 cursor-not-allowed' : ''}"
+      >
+        🤖 Contrato
+      </button>
+      <button
+        onclick={() => activeTab = 'networks'}
+        class="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 {activeTab === 'networks' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25' : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50'}"
+      >
+        🌐 Redes
+      </button>
+      <button
+        onclick={() => activeTab = 'balance'}
+        class="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 {activeTab === 'balance' ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/25' : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50'}"
+      >
+        🔍 Saldo
+      </button>
+      <button
+        onclick={() => activeTab = 'faucet'}
+        class="px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 {activeTab === 'faucet' ? 'bg-teal-600 text-white shadow-lg shadow-teal-600/25' : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-700/50'}"
+      >
+        💧 Faucet
+      </button>
+    </div>
 
-      {#if activeTab === 'wallet'}
+    <!-- Tab Content -->
+    {#if activeTab === 'wallet'}
+      {#if walletState.isConnected}
         <!-- Wallet Dashboard -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10 fade-in">
           
@@ -391,23 +421,36 @@
             </div>
           </div>
         {/if}
-
-      {:else if activeTab === 'send'}
-        <!-- Transaction Form -->
-        <div class="max-w-2xl mx-auto fade-in">
-          <TransactionForm isConnected={walletState.isConnected} />
-        </div>
-      {:else if activeTab === 'contract'}
-        <!-- Smart Contract Form -->
-        <div class="max-w-2xl mx-auto fade-in">
-          <SmartContractForm isConnected={walletState.isConnected} />
-        </div>
-      {:else if activeTab === 'networks'}
-        <!-- Network Manager -->
-        <div class="max-w-2xl mx-auto fade-in">
-          <NetworkManager isConnected={walletState.isConnected} />
+      {:else}
+        <div class="glass-card p-12 text-center fade-in">
+          <div class="inline-flex items-center justify-center w-20 h-20 bg-blue-500/10 rounded-2xl mb-6">
+            <span class="text-3xl">🔒</span>
+          </div>
+          <h3 class="text-xl font-bold text-white mb-2">Conecta tu Wallet</h3>
+          <p class="text-sm text-slate-400 max-w-md mx-auto">Conecta tu wallet para ver tu saldo, dirección y gestión de redes.</p>
         </div>
       {/if}
+
+    {:else if activeTab === 'send'}
+      <div class="max-w-2xl mx-auto fade-in">
+        <TransactionForm isConnected={walletState.isConnected} />
+      </div>
+    {:else if activeTab === 'contract'}
+      <div class="max-w-2xl mx-auto fade-in">
+        <SmartContractForm isConnected={walletState.isConnected} />
+      </div>
+    {:else if activeTab === 'networks'}
+      <div class="max-w-2xl mx-auto fade-in">
+        <NetworkManager isConnected={walletState.isConnected} />
+      </div>
+    {:else if activeTab === 'balance'}
+      <div class="max-w-2xl mx-auto fade-in">
+        <BalanceChecker />
+      </div>
+    {:else if activeTab === 'faucet'}
+      <div class="max-w-2xl mx-auto fade-in">
+        <Faucet />
+      </div>
     {/if}
   </main>
 </div>

@@ -21,6 +21,7 @@
     error = "",
     onconnect = () => {},
     ondisconnect = () => {},
+    onfulldisconnect = () => {},
   } = $props();
 
   let isWalletInstalled = $state(false);
@@ -67,6 +68,11 @@
   function handleDisconnect() {
     if (isLoading) return;
     ondisconnect();
+  }
+
+  function handleFullDisconnect() {
+    if (isLoading) return;
+    onfulldisconnect();
   }
 
   const PALI_WALLET_INSTALL_URL =
@@ -198,20 +204,37 @@
         abajo, o enviar transacciones desde la pestaña correspondiente.
       </p>
 
-      <button
-        type="button"
-        onclick={handleDisconnect}
-        disabled={isLoading}
-        class="inline-flex items-center px-8 py-3.5 bg-red-600/80 hover:bg-red-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all duration-200 disabled:cursor-not-allowed text-sm shadow-lg shadow-red-600/15 hover:scale-105 disabled:hover:scale-100"
-      >
-        {#if isLoading}
-          <LoadingSpinner size="small" color="white" />
-          <span class="ml-3">Desconectando...</span>
-        {:else}
-          <span class="mr-2">🔌</span>
-          Desconectar
-        {/if}
-      </button>
+      <div class="flex flex-col sm:flex-row gap-3 justify-center">
+        <button
+          type="button"
+          onclick={handleDisconnect}
+          disabled={isLoading}
+          class="inline-flex items-center px-8 py-3.5 bg-red-600/80 hover:bg-red-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all duration-200 disabled:cursor-not-allowed text-sm shadow-lg shadow-red-600/15 hover:scale-105 disabled:hover:scale-100"
+        >
+          {#if isLoading}
+            <LoadingSpinner size="small" color="white" />
+            <span class="ml-3">Desconectando...</span>
+          {:else}
+            <span class="mr-2">🔌</span>
+            Desconectar
+          {/if}
+        </button>
+
+        <button
+          type="button"
+          onclick={handleFullDisconnect}
+          disabled={isLoading}
+          class="inline-flex items-center px-8 py-3.5 bg-red-900/60 hover:bg-red-700 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-xl transition-all duration-200 disabled:cursor-not-allowed text-sm shadow-lg shadow-red-900/15 hover:scale-105 disabled:hover:scale-100 border border-red-500/20"
+        >
+          {#if isLoading}
+            <LoadingSpinner size="small" color="white" />
+            <span class="ml-3">Cerrando sesión...</span>
+          {:else}
+            <span class="mr-2">🚪</span>
+            Cerrar Sesión Total
+          {/if}
+        </button>
+      </div>
     </div>
   {/if}
 </div>
