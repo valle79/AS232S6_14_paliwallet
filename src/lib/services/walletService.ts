@@ -110,11 +110,31 @@ export class WalletService {
     console.log('🔧 Inicializando provider...');
     console.log('Chain type:', this.ethereum.chainType);
 
-    // Para PaliWallet en modo Syscoin, crear provider sin validación inicial
+    // Para PaliWallet en modo Syscoin, intentar obtener chainId primero
+    // para pasarlo al BrowserProvider y evitar fallos de detección de red
     if (this.ethereum.chainType === 'syscoin') {
-      console.log('🔗 Modo Syscoin detectado, creando provider directo...');
-      this.provider = new ethers.BrowserProvider(this.ethereum);
-      console.log('✅ Provider creado para Syscoin');
+      console.log('🔗 Modo Syscoin detectado, obteniendo chainId...');
+      let chainId: number | undefined;
+      try {
+        const chainIdHex: string = await this.ethereum.request({ method: 'eth_chainId' });
+        chainId = parseInt(chainIdHex, 16);
+        console.log('✅ Chain ID obtenido:', chainId);
+      } catch {
+        // Fallback: algunos providers exponen chainId como propiedad
+        const propChainId = this.ethereum.chainId || this.ethereum.networkVersion;
+        if (propChainId) {
+          chainId = typeof propChainId === 'string' && propChainId.startsWith('0x')
+            ? parseInt(propChainId, 16)
+            : parseInt(propChainId, 10);
+          console.log('✅ Chain ID obtenido de propiedad del provider:', chainId);
+        } else {
+          console.warn('⚠️ No se pudo obtener chainId, creando provider sin red conocida');
+        }
+      }
+
+      const networkOption = chainId ? { chainId, name: 'syscoin-custom' } : undefined;
+      this.provider = new ethers.BrowserProvider(this.ethereum, networkOption);
+      console.log('✅ Provider creado para Syscoin con network:', networkOption);
       return;
     }
 
@@ -367,61 +387,71 @@ private handleChainChanged = async (chainId: string) => {
   /* ===== Conexión ===== */
 
   async connectWallet(): Promise<string> {
-    if (!this.ethereum) {
+    const rawProvider = this.ethereum;
+    if (!rawProvider) {
       throw new Error('WALLET_NOT_INSTALLED');
     }
 
     console.log('🔗 Conectando con:', this.getWalletType());
-    console.log('Provider:', this.ethereum);
-    console.log('Chain type:', this.ethereum.chainType);
+    console.log('Provider:', rawProvider);
 
     // Always create a fresh provider to avoid stale cache after disconnect
     await this.initializeProvider();
 
     try {
-      console.log('📡 Solicitando cuentas a PaliWallet...');
-      
-      // Create a Promise with a 15-second timeout
-      const connectionPromise = new Promise<string[]>((resolve, reject) => {
-        const timeoutId = setTimeout(() => {
-          console.error('❌ Timeout esperando respuesta de PaliWallet');
-          reject(new Error('CONNECTION_TIMEOUT'));
-        }, 15000);
+      // Helper to request accounts with timeout
+      const requestAccounts = (method: string): Promise<string[]> => {
+        const p = rawProvider.request({ method, params: [] });
+        const timeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('CONNECTION_TIMEOUT')), 15000)
+        );
+        return Promise.race([p, timeout]);
+      };
 
-        this.ethereum!.request({
-          method: 'eth_requestAccounts'
-        })
-          .then((accounts: string[]) => {
-            clearTimeout(timeoutId);
-            console.log('✅ Cuentas recibidas:', accounts);
-            resolve(accounts);
-          })
-          .catch((error: any) => {
-            clearTimeout(timeoutId);
-            console.error('❌ Error en eth_requestAccounts:', error);
-            reject(error);
-          });
-      });
+      // Step 1: Try eth_accounts FIRST (read-only, returns already authorized accounts).
+      // Si falla con "Active account not found", lo tratamos como sin cuentas.
+      console.log('📡 Solicitando cuentas via eth_accounts...');
+      let accounts: string[];
+      try {
+        accounts = await requestAccounts('eth_accounts');
+      } catch {
+        accounts = [];
+      }
 
-      const accounts: string[] = await connectionPromise;
+      // Step 2: If no accounts from eth_accounts, try eth_requestAccounts (triggers popup)
+      if (!accounts || !accounts.length) {
+        console.log('📡 Sin cuentas previas, solicitando via eth_requestAccounts...');
+        try {
+          accounts = await requestAccounts('eth_requestAccounts');
+        } catch (reqErr: any) {
+          console.error('❌ eth_requestAccounts falló:', reqErr);
+          // Handle known error codes from PaliWallet
+          if (reqErr.code === -32603 || reqErr.message?.includes('Active account not found')) {
+            throw new Error('NO_ACCOUNTS_FOUND');
+          }
+          throw reqErr;
+        }
+      }
 
-      if (!accounts.length) {
+      if (!accounts || !accounts.length) {
         throw new Error('NO_ACCOUNTS_FOUND');
       }
 
-      console.log('✅ Obteniendo signer...');
+      const address = accounts[0];
+      console.log('✅ Cuenta obtenida:', address);
+
+      // Get signer from the ethers provider (should work after accounts are authorized)
       this.signer = await this.provider!.getSigner();
-      this.currentAddress = accounts[0];
+      this.currentAddress = address;
       this.isConnected = true;
       this.currentNetwork = await this.getNetworkInfo();
-      
-      // 🔥 Inicializar lastKnownChainId
+
       this.lastKnownChainId = this.currentNetwork.chainId;
 
       this.setupEventListeners();
 
       console.log('✅ Conexión completada');
-      return accounts[0];
+      return address;
 
     } catch (error: any) {
       console.error('❌ Error completo:', error);
@@ -430,6 +460,9 @@ private handleChainChanged = async (chainId: string) => {
       if (error.message === 'WALLET_IN_UTXO_MODE') throw error;
       if (error.code === 4001 || error.message?.includes('User rejected')) throw new Error('CONNECTION_REJECTED');
       if (error.code === -32002) throw new Error('CONNECTION_PENDING');
+      if (error.code === -32603 || error.message?.includes('Active account not found')) {
+        throw new Error('NO_ACCOUNTS_FOUND');
+      }
 
       throw new Error('CONNECTION_ERROR');
     }
@@ -511,6 +544,10 @@ private handleChainChanged = async (chainId: string) => {
           })
           .catch((error: any) => {
             clearTimeout(timeoutId);
+            if (error.code === -32603 || error.message?.includes('Active account not found')) {
+              resolve([]);
+              return;
+            }
             reject(error);
           });
       });

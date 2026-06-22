@@ -83,7 +83,7 @@
       chainId: 17000,
       name: 'Ethereum Holesky',
       type: 'EVM',
-      rpcUrl: 'https://eth-holesky.g.alchemy.com/v2/demo',
+      rpcUrl: 'https://ethereum-holesky.publicnode.com',
       nativeCurrency: { name: 'Holesky ETH', symbol: 'hETH', decimals: 18 },
       blockExplorerUrl: 'https://holesky.etherscan.io',
       isTestnet: true,

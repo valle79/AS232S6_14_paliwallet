@@ -6,7 +6,12 @@ export interface FaucetInfo {
   blockExplorerUrl?: string;
   dripAmount: string;
   isActive: boolean;
+  contractAddress?: string;
 }
+
+export const FAUCET_ABI = [
+  'function requestTokens(address recipient) external'
+];
 
 export const FAUCET_NETWORKS: FaucetInfo[] = [
   {
@@ -16,7 +21,8 @@ export const FAUCET_NETWORKS: FaucetInfo[] = [
     rpcUrl: 'https://rpc.tanenbaum.io',
     blockExplorerUrl: 'https://tanenbaum.io',
     dripAmount: '10',
-    isActive: true
+    isActive: true,
+    contractAddress: '0xFe1254f698773A071B33CF2d0fff94c5D9E6759E'
   },
   {
     chainId: 57042,
@@ -25,7 +31,7 @@ export const FAUCET_NETWORKS: FaucetInfo[] = [
     rpcUrl: 'https://rpc-pob.dev11.top/',
     blockExplorerUrl: 'https://explorer-pob.dev11.top',
     dripAmount: '10',
-    isActive: true
+    isActive: false
   },
   {
     chainId: 57057,
@@ -33,7 +39,7 @@ export const FAUCET_NETWORKS: FaucetInfo[] = [
     currency: 'TSYS',
     rpcUrl: 'https://rpc-zk.tanenbaum.io/',
     blockExplorerUrl: 'https://explorer-zk.tanenbaum.io',
-    dripAmount: '10',
+    dripAmount: '1',
     isActive: true
   },
   {

@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { ethers } from 'ethers';
-import { FAUCET_NETWORKS } from '$lib/config/faucetConfig';
+import { FAUCET_NETWORKS, FAUCET_ABI } from '$lib/config/faucetConfig';
 import { env } from '$env/dynamic/private';
 
 export async function POST({ request }) {
@@ -35,25 +35,42 @@ export async function POST({ request }) {
 
     const provider = new ethers.JsonRpcProvider(faucet.rpcUrl);
     const wallet = new ethers.Wallet(faucetPk, provider);
-
     const amount = faucetAmount || faucet.dripAmount;
     const amountWei = ethers.parseEther(amount);
 
-    const balance = await provider.getBalance(wallet.address);
+    let tx;
 
-    if (balance < amountWei) {
-      return json({
-        error: 'La wallet del faucet no tiene suficiente balance',
-        detail: `Necesita ${amount} ${faucet.currency}, tiene ${ethers.formatEther(balance)} ${faucet.currency}`
-      }, { status: 503 });
+    if (faucet.contractAddress) {
+      const contract = new ethers.Contract(faucet.contractAddress, FAUCET_ABI, wallet);
+      let methodName: string | null = null;
+      contract.interface.forEachFunction((func) => {
+        if (!methodName && ['requestTokens', 'drip', 'faucet'].includes(func.name)) {
+          methodName = func.name;
+        }
+      });
+
+      if (!methodName) {
+        return json({ error: 'El contrato del faucet no tiene métodos compatibles' }, { status: 500 });
+      }
+
+      const funcFragment = contract.interface.getFunction(methodName);
+      const isPayable = funcFragment?.payable || false;
+      const txOptions = isPayable ? { value: amountWei } : {};
+      tx = await contract[methodName](address, txOptions);
+    } else {
+      const balance = await provider.getBalance(wallet.address);
+      if (balance < amountWei) {
+        return json({
+          error: 'La wallet del faucet no tiene suficiente balance',
+          detail: `Necesita ${amount} ${faucet.currency}, tiene ${ethers.formatEther(balance)} ${faucet.currency}`
+        }, { status: 503 });
+      }
+
+      tx = await wallet.sendTransaction({
+        to: address,
+        value: amountWei
+      });
     }
-
-    // Enviar sin especificar gas — ethers resuelve automáticamente
-    // el gasPrice, gasLimit y tipo de transacción según la red
-    const tx = await wallet.sendTransaction({
-      to: address,
-      value: amountWei
-    });
 
     const receipt = await tx.wait();
 
@@ -75,6 +92,13 @@ export async function POST({ request }) {
     if (error.code === 'INSUFFICIENT_FUNDS') {
       return json({
         error: 'La wallet del faucet no tiene fondos suficientes para cubrir el gas de la transacción',
+      }, { status: 503 });
+    }
+
+    if (error.code === 'NETWORK_ERROR' || error.code === 'CALL_EXCEPTION' || error?.reason?.includes('bad response')) {
+      return json({
+        error: 'El RPC de la red no está disponible en este momento. Intenta más tarde.',
+        detail: error.message
       }, { status: 503 });
     }
 

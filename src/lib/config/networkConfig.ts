@@ -107,7 +107,7 @@ export const EVM_NETWORKS: Record<string, NetworkConfig> = {
     chainId: 1,
     name: 'Ethereum Mainnet',
     type: 'EVM',
-    rpcUrl: 'https://eth.public-rpc.com',
+    rpcUrl: 'https://ethereum-rpc.publicnode.com',
     nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
     blockExplorerUrl: 'https://etherscan.io',
     isTestnet: false
@@ -125,7 +125,7 @@ export const EVM_NETWORKS: Record<string, NetworkConfig> = {
     chainId: 17000,
     name: 'Ethereum Holesky',
     type: 'EVM',
-    rpcUrl: 'https://eth-holesky.g.alchemy.com/v2/demo',
+    rpcUrl: 'https://ethereum-holesky.publicnode.com',
     nativeCurrency: { name: 'Holesky ETH', symbol: 'hETH', decimals: 18 },
     blockExplorerUrl: 'https://holesky.etherscan.io',
     isTestnet: true
@@ -144,7 +144,7 @@ export const EVM_NETWORKS: Record<string, NetworkConfig> = {
     chainId: 137,
     name: 'Polygon Mainnet',
     type: 'EVM',
-    rpcUrl: 'https://polygon-rpc.com',
+    rpcUrl: 'https://polygon-bor-rpc.publicnode.com',
     nativeCurrency: { name: 'Polygon', symbol: 'MATIC', decimals: 18 },
     blockExplorerUrl: 'https://polygonscan.com',
     isTestnet: false

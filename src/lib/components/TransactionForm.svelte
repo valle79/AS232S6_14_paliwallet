@@ -34,7 +34,7 @@
   let recentTransactions = $state<
     Array<{ hash: string; to: string; value: string; status: string; timestamp: number; chainId?: string; networkName?: string }>
   >([]);
-  let showAllNetworks = $state(false); // 🔥 NUEVO: Toggle para mostrar todas las redes
+  let showAllNetworks = $state(true); // Muestra todas las redes por defecto
 
   /* ================================
      LIFECYCLE

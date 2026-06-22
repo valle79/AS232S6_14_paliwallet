@@ -44,6 +44,12 @@ export function mapWalletError(error) {
       action: 'retry'
     },
     
+    'NO_ACCOUNTS_FOUND': {
+      message: 'No se encontró una cuenta activa en PaliWallet. Abre la extensión, crea o importa una cuenta, asegúrate de que esté desbloqueada y seleccionada en la red Syscoin.',
+      type: 'warning',
+      action: 'retry'
+    },
+
     'CONNECTION_ERROR': {
       message: 'Error al conectar con la wallet. Verifica que Pali Wallet esté funcionando correctamente.',
       type: 'error',

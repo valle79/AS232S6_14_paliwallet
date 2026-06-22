@@ -3,6 +3,7 @@
   import { FAUCET_NETWORKS } from '../config/faucetConfig';
   import { showSuccess, showError, showInfo } from '../utils/notifications';
   import LoadingSpinner from './LoadingSpinner.svelte';
+  import FaucetHistory from './FaucetHistory.svelte';
 
   let address = $state('');
   let selectedFaucet = $state(null);
@@ -11,6 +12,26 @@
   let result = $state(null);
   let isConfigured = $state(true);
   let configChecked = $state(false);
+  let faucetHistoryKey = $state(0);
+
+  function saveFaucetHistory(data, requestedChainId) {
+    if (typeof window === 'undefined') return;
+    const history = JSON.parse(localStorage.getItem('faucet_history') || '[]');
+    history.unshift({
+      address: address.trim(),
+      network: data.network,
+      currency: data.currency,
+      amount: data.amount,
+      txHash: data.txHash,
+      chainId: requestedChainId,
+      timestamp: Date.now(),
+      explorerUrl: data.explorerUrl || null
+    });
+    // Keep max 50 entries
+    if (history.length > 50) history.length = 50;
+    localStorage.setItem('faucet_history', JSON.stringify(history));
+    faucetHistoryKey++;
+  }
 
   const syscoinFaucets = $derived(
     FAUCET_NETWORKS.filter(f =>
@@ -64,6 +85,7 @@
     loading = true;
     error = '';
     result = null;
+    const requestedChainId = selectedFaucet.chainId;
 
     try {
       const res = await fetch('/api/faucet', {
@@ -86,6 +108,7 @@
       }
 
       result = data;
+      saveFaucetHistory(data, requestedChainId);
       showSuccess(`Recibiste ${data.amount} ${data.currency} en ${data.network}`);
     } catch (e) {
       error = e.message || 'Error de conexión con el faucet';
@@ -96,20 +119,17 @@
     }
   }
 
-  async function handleConnectAndFaucet() {
-    if (loading) return;
-    showInfo('Conecta tu wallet primero para solicitar tokens');
-  }
 </script>
 
-<div class="glass-card p-8">
-  <div class="flex items-start justify-between mb-8">
-    <div>
-      <h3 class="text-xl font-bold text-white">💧 Faucet de Tokens</h3>
-      <p class="text-xs text-slate-500 mt-1">Recibe tokens de prueba directo a tu wallet</p>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <div class="glass-card p-8">
+    <div class="flex items-start justify-between mb-8">
+      <div>
+        <h3 class="text-xl font-bold text-white">💧 Faucet de Tokens</h3>
+        <p class="text-xs text-slate-500 mt-1">Recibe tokens de prueba directo a tu wallet</p>
+      </div>
+      <div class="w-12 h-12 bg-cyan-500/10 rounded-xl flex items-center justify-center text-2xl">💧</div>
     </div>
-    <div class="w-12 h-12 bg-cyan-500/10 rounded-xl flex items-center justify-center text-2xl">💧</div>
-  </div>
 
   {#if isConfigured && configChecked}
     <div class="mb-6 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
@@ -286,4 +306,7 @@
       </div>
     </div>
   {/if}
+</div>
+
+<FaucetHistory key={faucetHistoryKey} />
 </div>
