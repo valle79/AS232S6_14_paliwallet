@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { ethers } from 'ethers';
-import { FAUCET_NETWORKS, FAUCET_ABI } from '$lib/config/faucetConfig';
+import { FAUCET_NETWORKS, FAUCET_ABI, TOKEN_MIN_ABI } from '$lib/config/faucetConfig';
 import { env } from '$env/dynamic/private';
 
 export async function POST({ request }) {
@@ -36,28 +36,30 @@ export async function POST({ request }) {
     const provider = new ethers.JsonRpcProvider(faucet.rpcUrl);
     const wallet = new ethers.Wallet(faucetPk, provider);
     const amount = faucetAmount || faucet.dripAmount;
-    const amountWei = ethers.parseEther(amount);
 
     let tx;
+    let currency = faucet.currency;
+    let tokenSymbol = faucet.currency;
 
-    if (faucet.contractAddress) {
+    if (faucet.contractAddress && faucet.faucetType === 'erc20') {
       const contract = new ethers.Contract(faucet.contractAddress, FAUCET_ABI, wallet);
-      let methodName: string | null = null;
-      contract.interface.forEachFunction((func) => {
-        if (!methodName && ['requestTokens', 'drip', 'faucet'].includes(func.name)) {
-          methodName = func.name;
+      try {
+        const tokenAddr = await contract.token();
+        if (tokenAddr && ethers.isAddress(tokenAddr)) {
+          const tokenContract = new ethers.Contract(tokenAddr, TOKEN_MIN_ABI, provider);
+          tokenSymbol = await tokenContract.symbol();
+          currency = tokenSymbol;
         }
-      });
-
-      if (!methodName) {
-        return json({ error: 'El contrato del faucet no tiene métodos compatibles' }, { status: 500 });
+      } catch {
+        // fallback to config currency
       }
-
-      const funcFragment = contract.interface.getFunction(methodName);
-      const isPayable = funcFragment?.payable || false;
-      const txOptions = isPayable ? { value: amountWei } : {};
-      tx = await contract[methodName](address, txOptions);
+      tx = await contract.claimFor(address);
+    } else if (faucet.contractAddress) {
+      const amountWei = ethers.parseEther(amount);
+      const contract = new ethers.Contract(faucet.contractAddress, FAUCET_ABI, wallet);
+      tx = await contract.requestTokens(address, { value: amountWei });
     } else {
+      const amountWei = ethers.parseEther(amount);
       const balance = await provider.getBalance(wallet.address);
       if (balance < amountWei) {
         return json({
@@ -65,7 +67,6 @@ export async function POST({ request }) {
           detail: `Necesita ${amount} ${faucet.currency}, tiene ${ethers.formatEther(balance)} ${faucet.currency}`
         }, { status: 503 });
       }
-
       tx = await wallet.sendTransaction({
         to: address,
         value: amountWei
@@ -79,8 +80,10 @@ export async function POST({ request }) {
       txHash: tx.hash,
       blockNumber: receipt?.blockNumber,
       amount,
-      currency: faucet.currency,
+      currency,
       network: faucet.networkName,
+      tokenSymbol,
+      faucetType: faucet.faucetType || 'native',
       explorerUrl: faucet.blockExplorerUrl
         ? `${faucet.blockExplorerUrl}/tx/${tx.hash}`
         : null
@@ -95,7 +98,24 @@ export async function POST({ request }) {
       }, { status: 503 });
     }
 
-    if (error.code === 'NETWORK_ERROR' || error.code === 'CALL_EXCEPTION' || error?.reason?.includes('bad response')) {
+    if (error.code === 'CALL_EXCEPTION') {
+      let detail = 'La transacción al contrato falló.';
+      if (error.reason) {
+        detail += ` Razón: ${error.reason}`;
+        if (error.reason.includes('not authorized')) {
+          detail += ' La wallet del servidor no está autorizada como relayer. Llama a setRelayer() en el contrato.';
+        } else if (error.reason.includes('CooldownActive')) {
+          detail += ' El usuario ya reclamó recientemente. Espera el cooldown.';
+        } else if (error.reason.includes('NoFunds')) {
+          detail += ' El contrato no tiene tokens. Fondea el contrato con tokens primero.';
+        }
+      } else if (error.data) {
+        detail += ' Revisa que el contrato tenga fondos y que el método exista.';
+      }
+      return json({ error: detail }, { status: 502 });
+    }
+
+    if (error.code === 'NETWORK_ERROR' || error?.reason?.includes('bad response')) {
       return json({
         error: 'El RPC de la red no está disponible en este momento. Intenta más tarde.',
         detail: error.message
